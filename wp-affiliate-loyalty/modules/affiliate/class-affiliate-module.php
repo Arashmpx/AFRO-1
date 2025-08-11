@@ -2,9 +2,6 @@
 /**
  * The Affiliate Module
  *
- * @link       https://example.com/
- * @since      1.0.0
- *
  * @package    WP_Affiliate_Loyalty
  * @subpackage WP_Affiliate_Loyalty/modules/affiliate
  */
@@ -12,9 +9,6 @@
 /**
  * The main class for the affiliate module.
  *
- * @since      1.0.0
- * @package    WP_Affiliate_Loyalty
- * @subpackage WP_Affiliate_Loyalty/modules/affiliate
  * @author     Jules
  */
 class WP_Affiliate_Loyalty_Affiliate_Module {
@@ -39,54 +33,37 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
     }
 
     public function render_dashboard_shortcode( $atts ) {
-        if ( ! is_user_logged_in() ) {
-            return '<p>' . esc_html__( 'Please log in to view your affiliate dashboard.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ) . '</p>';
-        }
-
+        if ( ! is_user_logged_in() ) return '<p>' . esc_html__( 'Please log in to view your affiliate dashboard.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ) . '</p>';
         $user_id = get_current_user_id();
         $affiliate_link = $this->get_or_create_affiliate_link( $user_id );
         $wallet_balance = $this->get_wallet_balance( $user_id );
         $recent_commissions = $this->get_recent_commissions( $user_id );
-
         ob_start();
         ?>
         <div class="wp-affiliate-loyalty-dashboard">
             <h2><?php esc_html_e( 'Affiliate Dashboard', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h2>
-
             <div class="dashboard-section">
                 <h3><?php esc_html_e( 'Your Referral Link', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h3>
                 <p><?php esc_html_e( 'Share this link to earn commissions:', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></p>
                 <input type="text" value="<?php echo esc_url( $affiliate_link ); ?>" readonly>
             </div>
-
             <div class="dashboard-section">
                 <h3><?php esc_html_e( 'Your Wallet', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h3>
                 <p><strong><?php esc_html_e( 'Current Balance:', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></strong> <?php echo esc_html( number_format_i18n( $wallet_balance, 0 ) ); ?> <?php esc_html_e( 'IRR', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></p>
             </div>
-
             <div class="dashboard-section">
                 <h3><?php esc_html_e( 'Recent Commissions', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h3>
                 <table class="commission-table">
-                    <thead>
-                        <tr>
-                            <th><?php esc_html_e( 'Amount', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th>
-                            <th><?php esc_html_e( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th>
-                            <th><?php esc_html_e( 'Date', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th><?php esc_html_e( 'Amount', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Date', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th></tr></thead>
                     <tbody>
-                        <?php if ( ! empty( $recent_commissions ) ) : ?>
-                            <?php foreach ( $recent_commissions as $commission ) : ?>
-                                <tr>
-                                    <td data-label="<?php esc_attr_e( 'Amount', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( number_format_i18n( $commission->amount, 0 ) ); ?></td>
-                                    <td data-label="<?php esc_attr_e( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( ucfirst( $commission->status ) ); ?></td>
-                                    <td data-label="<?php esc_attr_e( 'Date', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $commission->created_at ) ) ); ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php else : ?>
+                        <?php if ( ! empty( $recent_commissions ) ) : foreach ( $recent_commissions as $commission ) : ?>
                             <tr>
-                                <td colspan="3" style="text-align: center;"><?php esc_html_e( 'You have no commissions yet.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></td>
+                                <td data-label="<?php esc_attr_e( 'Amount', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( number_format_i18n( $commission->amount, 0 ) ); ?></td>
+                                <td data-label="<?php esc_attr_e( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( ucfirst( $commission->status ) ); ?></td>
+                                <td data-label="<?php esc_attr_e( 'Date', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $commission->created_at ) ) ); ?></td>
                             </tr>
+                        <?php endforeach; else : ?>
+                            <tr><td colspan="3" style="text-align: center;"><?php esc_html_e( 'You have no commissions yet.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -97,45 +74,26 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
     }
 
     private function get_or_create_affiliate_link( $user_id ) {
-        global $wpdb;
-        $links_table = $wpdb->prefix . 'aff_loyalty_links';
-
+        global $wpdb; $links_table = $wpdb->prefix . 'aff_loyalty_links';
         $token = $wpdb->get_var( $wpdb->prepare( "SELECT token FROM {$links_table} WHERE affiliate_id = %d AND url = ''", $user_id ) );
-
         if ( ! $token ) {
             $user = get_userdata( $user_id );
             $token = ! empty( $user->user_nicename ) ? $user->user_nicename : (string) $user_id;
-
-            $is_token_exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$links_table} WHERE token = %s", $token ) );
-            if ( $is_token_exists ) {
-                $token = $token . '-' . $user_id;
-            }
-
-            $wpdb->insert(
-                $links_table,
-                array( 'affiliate_id' => $user_id, 'token' => $token, 'url' => '' ),
-                array( '%d', '%s', '%s' )
-            );
+            if ( $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$links_table} WHERE token = %s", $token ) ) ) $token = $token . '-' . $user_id;
+            $wpdb->insert( $links_table, array( 'affiliate_id' => $user_id, 'token' => $token, 'url' => '' ), array( '%d', '%s', '%s' ) );
         }
-
         return add_query_arg( $this->ref_key, $token, home_url( '/' ) );
     }
 
     private function get_wallet_balance( $user_id ) {
-        global $wpdb;
-        $wallets_table = $wpdb->prefix . 'aff_loyalty_wallets';
+        global $wpdb; $wallets_table = $wpdb->prefix . 'aff_loyalty_wallets';
         $balance = $wpdb->get_var( $wpdb->prepare( "SELECT balance FROM {$wallets_table} WHERE user_id = %d", $user_id ) );
         return $balance ? (float) $balance : 0;
     }
 
     private function get_recent_commissions( $user_id, $limit = 10 ) {
-        global $wpdb;
-        $commissions_table = $wpdb->prefix . 'aff_loyalty_commissions';
-        return $wpdb->get_results( $wpdb->prepare(
-            "SELECT amount, status, created_at FROM {$commissions_table} WHERE affiliate_id = %d ORDER BY created_at DESC LIMIT %d",
-            $user_id,
-            $limit
-        ) );
+        global $wpdb; $commissions_table = $wpdb->prefix . 'aff_loyalty_commissions';
+        return $wpdb->get_results( $wpdb->prepare( "SELECT amount, status, created_at FROM {$commissions_table} WHERE affiliate_id = %d ORDER BY created_at DESC LIMIT %d", $user_id, $limit ) );
     }
 
     public function track_visitor() {
@@ -143,8 +101,7 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
         if ( ! isset( $_GET[ $this->ref_key ] ) ) return;
         $token = sanitize_text_field( wp_unslash( $_GET[ $this->ref_key ] ) );
         if ( empty( $token ) ) return;
-        global $wpdb;
-        $links_table = $wpdb->prefix . 'aff_loyalty_links';
+        global $wpdb; $links_table = $wpdb->prefix . 'aff_loyalty_links';
         $affiliate_id = $wpdb->get_var( $wpdb->prepare( "SELECT affiliate_id FROM {$links_table} WHERE token = %s", $token ) );
         if ( ! $affiliate_id ) return;
         setcookie( $this->cookie_name, absint( $affiliate_id ), time() + ( 30 * DAY_IN_SECONDS ), COOKIEPATH, COOKIE_DOMAIN );
@@ -161,11 +118,14 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
         global $wpdb;
         $commissions_table = $wpdb->prefix . 'aff_loyalty_commissions';
         if ( $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$commissions_table} WHERE order_id = %d", $order_id ) ) ) return;
-        $commission_amount = $order->get_total() * 0.10;
-        $wpdb->insert(
-            $commissions_table,
-            array( 'order_id' => $order_id, 'affiliate_id' => $affiliate_id, 'amount' => $commission_amount, 'status' => 'pending', 'created_at' => current_time( 'mysql' ) ),
-            array( '%d', '%d', '%f', '%s', '%s' )
-        );
+        require_once WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'modules/affiliate/class-rule-processor.php';
+        $rules_table = $wpdb->prefix . 'aff_loyalty_rules';
+        $rules = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$rules_table} WHERE module = %s AND active = 1 ORDER BY precedence ASC", 'affiliate' ) );
+        if ( empty( $rules ) ) return;
+        $rule_processor = new Rule_Processor( $order, $rules );
+        $commission_amount = $rule_processor->evaluate();
+        if ( $commission_amount > 0 ) {
+            $wpdb->insert( $commissions_table, array('order_id' => $order_id, 'affiliate_id' => $affiliate_id, 'amount' => $commission_amount, 'status' => 'pending', 'created_at' => current_time('mysql')), array('%d', '%d', '%f', '%s', '%s') );
+        }
     }
 }
