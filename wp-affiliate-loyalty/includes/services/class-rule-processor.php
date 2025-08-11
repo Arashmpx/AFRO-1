@@ -66,15 +66,23 @@ class Rule_Processor {
 
         switch ( $actions['type'] ) {
             case 'percentage':
-                $commission_amount = $this->order->get_total() * ( $value / 100 );
+                $result = $this->order->get_total() * ( $value / 100 );
                 break;
 
             case 'fixed':
-                $commission_amount = $value;
+                $result = $value;
+                break;
+
+            case 'points':
+                // For loyalty, the value is the number of points.
+                $result = $value;
+                break;
+
+            default:
+                $result = 0.0;
                 break;
         }
 
-        // The spec uses IRR which has no decimals, so we can round.
-        return round( $commission_amount );
+        return round( $result );
     }
 }

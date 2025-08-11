@@ -1,15 +1,6 @@
 <?php
 /**
  * The Affiliate Module
- *
- * @package    WP_Affiliate_Loyalty
- * @subpackage WP_Affiliate_Loyalty/modules/affiliate
- */
-
-/**
- * The main class for the affiliate module.
- *
- * @author     Jules
  */
 class WP_Affiliate_Loyalty_Affiliate_Module {
 
@@ -26,6 +17,7 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
         add_action( 'init', array( $this, 'track_visitor' ) );
         add_action( 'init', array( $this, 'register_shortcodes' ) );
         add_action( 'woocommerce_order_status_completed', array( $this, 'register_commission' ), 10, 1 );
+        add_action( 'wp_affiliate_loyalty_dashboard_sections', array( $this, 'render_affiliate_dashboard_sections' ), 10, 1 );
     }
 
     public function register_shortcodes() {
@@ -33,44 +25,45 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
     }
 
     public function render_dashboard_shortcode( $atts ) {
-        if ( ! is_user_logged_in() ) return '<p>' . esc_html__( 'Please log in to view your affiliate dashboard.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ) . '</p>';
+        if ( ! is_user_logged_in() ) return '<p>' . esc_html__( 'Please log in to view your dashboard.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ) . '</p>';
         $user_id = get_current_user_id();
-        $affiliate_link = $this->get_or_create_affiliate_link( $user_id );
-        $wallet_balance = $this->get_wallet_balance( $user_id );
-        $recent_commissions = $this->get_recent_commissions( $user_id );
         ob_start();
         ?>
         <div class="wp-affiliate-loyalty-dashboard">
-            <h2><?php esc_html_e( 'Affiliate Dashboard', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h2>
-            <div class="dashboard-section">
-                <h3><?php esc_html_e( 'Your Referral Link', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h3>
-                <p><?php esc_html_e( 'Share this link to earn commissions:', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></p>
-                <input type="text" value="<?php echo esc_url( $affiliate_link ); ?>" readonly>
-            </div>
-            <div class="dashboard-section">
-                <h3><?php esc_html_e( 'Your Wallet', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h3>
-                <p><strong><?php esc_html_e( 'Current Balance:', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></strong> <?php echo esc_html( number_format_i18n( $wallet_balance, 0 ) ); ?> <?php esc_html_e( 'IRR', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></p>
-            </div>
-            <div class="dashboard-section">
-                <h3><?php esc_html_e( 'Recent Commissions', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h3>
-                <table class="commission-table">
-                    <thead><tr><th><?php esc_html_e( 'Amount', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Date', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th></tr></thead>
-                    <tbody>
-                        <?php if ( ! empty( $recent_commissions ) ) : foreach ( $recent_commissions as $commission ) : ?>
-                            <tr>
-                                <td data-label="<?php esc_attr_e( 'Amount', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( number_format_i18n( $commission->amount, 0 ) ); ?></td>
-                                <td data-label="<?php esc_attr_e( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( ucfirst( $commission->status ) ); ?></td>
-                                <td data-label="<?php esc_attr_e( 'Date', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $commission->created_at ) ) ); ?></td>
-                            </tr>
-                        <?php endforeach; else : ?>
-                            <tr><td colspan="3" style="text-align: center;"><?php esc_html_e( 'You have no commissions yet.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></td></tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+            <h2><?php esc_html_e( 'Your Dashboard', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h2>
+            <?php do_action( 'wp_affiliate_loyalty_dashboard_sections', $user_id ); ?>
         </div>
         <?php
         return ob_get_clean();
+    }
+
+    public function render_affiliate_dashboard_sections( $user_id ) {
+        $affiliate_link = $this->get_or_create_affiliate_link( $user_id );
+        $wallet_balance = $this->get_wallet_balance( $user_id );
+        $recent_commissions = $this->get_recent_commissions( $user_id );
+        ?>
+        <div class="dashboard-section affiliate-section">
+            <h3><?php esc_html_e( 'Affiliate Stats', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h3>
+            <p><strong><?php esc_html_e( 'Your Referral Link:', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></strong></p>
+            <input type="text" value="<?php echo esc_url( $affiliate_link ); ?>" readonly>
+            <p><strong><?php esc_html_e( 'Wallet Balance:', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></strong> <?php echo esc_html( number_format_i18n( $wallet_balance, 0 ) ); ?> <?php esc_html_e( 'IRR', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></p>
+            <h4><?php esc_html_e( 'Recent Commissions', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h4>
+            <table class="commission-table">
+                <thead><tr><th><?php esc_html_e( 'Amount', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Date', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th></tr></thead>
+                <tbody>
+                    <?php if ( ! empty( $recent_commissions ) ) : foreach ( $recent_commissions as $commission ) : ?>
+                        <tr>
+                            <td data-label="<?php esc_attr_e( 'Amount', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( number_format_i18n( $commission->amount, 0 ) ); ?></td>
+                            <td data-label="<?php esc_attr_e( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( ucfirst( $commission->status ) ); ?></td>
+                            <td data-label="<?php esc_attr_e( 'Date', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $commission->created_at ) ) ); ?></td>
+                        </tr>
+                    <?php endforeach; else : ?>
+                        <tr><td colspan="3" style="text-align: center;"><?php esc_html_e( 'You have no commissions yet.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></td></tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
     }
 
     private function get_or_create_affiliate_link( $user_id ) {
@@ -118,7 +111,7 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
         global $wpdb;
         $commissions_table = $wpdb->prefix . 'aff_loyalty_commissions';
         if ( $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$commissions_table} WHERE order_id = %d", $order_id ) ) ) return;
-        require_once WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'modules/affiliate/class-rule-processor.php';
+        require_once WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'includes/services/class-rule-processor.php';
         $rules_table = $wpdb->prefix . 'aff_loyalty_rules';
         $rules = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$rules_table} WHERE module = %s AND active = 1 ORDER BY precedence ASC", 'affiliate' ) );
         if ( empty( $rules ) ) return;

@@ -160,7 +160,9 @@ class WP_Affiliate_Loyalty_Main {
         require_once WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'modules/affiliate/class-affiliate-module.php';
         new WP_Affiliate_Loyalty_Affiliate_Module();
 
-        // The loyalty module will be loaded here later.
+        // Load the loyalty module
+        require_once WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'modules/loyalty/class-loyalty-module.php';
+        new WP_Affiliate_Loyalty_Loyalty_Module();
     }
 
     /**
