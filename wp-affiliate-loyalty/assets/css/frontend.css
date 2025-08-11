@@ -1,0 +1,106 @@
+/*
+ * Affiliate & Loyalty System Frontend Styles
+ */
+
+.wp-affiliate-loyalty-dashboard {
+    border: 1px solid #ddd;
+    padding: 20px;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+    max-width: 800px;
+    margin: 20px auto;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+}
+
+.wp-affiliate-loyalty-dashboard h2 {
+    margin-top: 0;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+.wp-affiliate-loyalty-dashboard .dashboard-section {
+    margin-bottom: 30px;
+}
+
+.wp-affiliate-loyalty-dashboard h3 {
+    margin-bottom: 10px;
+}
+
+.wp-affiliate-loyalty-dashboard input[type="text"] {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background-color: #fff;
+    box-sizing: border-box;
+}
+
+.wp-affiliate-loyalty-dashboard .commission-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+    border: 1px solid #ddd;
+}
+
+.wp-affiliate-loyalty-dashboard .commission-table th,
+.wp-affiliate-loyalty-dashboard .commission-table td {
+    padding: 12px;
+    border-bottom: 1px solid #ddd;
+    text-align: left;
+}
+
+.wp-affiliate-loyalty-dashboard .commission-table thead th {
+    background-color: #f2f2f2;
+    font-weight: bold;
+}
+
+.wp-affiliate-loyalty-dashboard .commission-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+.wp-affiliate-loyalty-dashboard .commission-table tbody tr:hover {
+    background-color: #f1f1f1;
+}
+
+/* Responsive styles for the table */
+@media screen and (max-width: 600px) {
+    .wp-affiliate-loyalty-dashboard .commission-table thead {
+        display: none;
+    }
+
+    .wp-affiliate-loyalty-dashboard .commission-table,
+    .wp-affiliate-loyalty-dashboard .commission-table tbody,
+    .wp-affiliate-loyalty-dashboard .commission-table tr,
+    .wp-affiliate-loyalty-dashboard .commission-table td {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .wp-affiliate-loyalty-dashboard .commission-table tr {
+        margin-bottom: 15px;
+    }
+
+    .wp-affiliate-loyalty-dashboard .commission-table td {
+        text-align: right;
+        padding-left: 50%;
+        position: relative;
+        border-bottom: none;
+    }
+
+    .wp-affiliate-loyalty-dashboard .commission-table td:last-child {
+        border-bottom: 1px solid #ddd;
+    }
+
+    .wp-affiliate-loyalty-dashboard .commission-table td:before {
+        content: attr(data-label);
+        position: absolute;
+        left: 10px;
+        width: calc(50% - 20px);
+        padding-right: 10px;
+        white-space: nowrap;
+        text-align: left;
+        font-weight: bold;
+    }
+}
