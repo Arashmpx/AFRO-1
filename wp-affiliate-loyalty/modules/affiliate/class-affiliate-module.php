@@ -94,10 +94,27 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
         if ( ! isset( $_GET[ $this->ref_key ] ) ) return;
         $token = sanitize_text_field( wp_unslash( $_GET[ $this->ref_key ] ) );
         if ( empty( $token ) ) return;
-        global $wpdb; $links_table = $wpdb->prefix . 'aff_loyalty_links';
-        $affiliate_id = $wpdb->get_var( $wpdb->prepare( "SELECT affiliate_id FROM {$links_table} WHERE token = %s", $token ) );
-        if ( ! $affiliate_id ) return;
-        setcookie( $this->cookie_name, absint( $affiliate_id ), time() + ( 30 * DAY_IN_SECONDS ), COOKIEPATH, COOKIE_DOMAIN );
+
+        global $wpdb;
+        $links_table = $wpdb->prefix . 'aff_loyalty_links';
+        $link_data = $wpdb->get_row( $wpdb->prepare( "SELECT id, affiliate_id FROM {$links_table} WHERE token = %s", $token ) );
+
+        if ( ! $link_data ) return;
+
+        // Log the click
+        $clicks_table = $wpdb->prefix . 'aff_loyalty_clicks';
+        $wpdb->insert(
+            $clicks_table,
+            array(
+                'link_id'      => $link_data->id,
+                'affiliate_id' => $link_data->affiliate_id,
+                'ip_address'   => $_SERVER['REMOTE_ADDR'] ?? '',
+                'user_agent'   => $_SERVER['HTTP_USER_AGENT'] ?? '',
+            ),
+            array('%d', '%d', '%s', '%s')
+        );
+
+        setcookie( $this->cookie_name, absint( $link_data->affiliate_id ), time() + ( 30 * DAY_IN_SECONDS ), COOKIEPATH, COOKIE_DOMAIN );
         wp_safe_redirect( remove_query_arg( $this->ref_key ) );
         exit;
     }

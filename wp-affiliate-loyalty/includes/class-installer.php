@@ -115,6 +115,18 @@ class WP_Affiliate_Loyalty_Installer {
             PRIMARY KEY (id),
             KEY entity_type_id (entity_type, entity_id)
         ) $charset_collate;
+
+        CREATE TABLE {$wpdb->prefix}aff_loyalty_clicks (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            link_id BIGINT(20) UNSIGNED NOT NULL,
+            affiliate_id BIGINT(20) UNSIGNED NOT NULL,
+            ip_address VARCHAR(100) NOT NULL,
+            user_agent TEXT NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY link_id (link_id),
+            KEY affiliate_id (affiliate_id)
+        ) $charset_collate;
         ";
 
         dbDelta( $sql );

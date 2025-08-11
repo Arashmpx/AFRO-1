@@ -19,12 +19,21 @@ class WP_Affiliate_Loyalty_Admin {
         add_action( 'admin_init', array( $this, 'process_actions' ) );
         add_action( 'admin_notices', array( $this, 'display_admin_notices' ) );
         add_action( 'admin_post_save_affiliate_loyalty_rule', array( $this, 'handle_save_rule_form' ) );
+        add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
+    }
+
+    public function enqueue_scripts( $hook ) {
+        if ( 'toplevel_page_wp-affiliate-loyalty' !== $hook && 'affiliate-loyalty_page_wp-affiliate-loyalty-reports' !== $hook ) {
+            return;
+        }
+        wp_enqueue_script( 'chartjs', 'https://cdn.jsdelivr.net/npm/chart.js', array(), '4.4.1', true );
     }
 
     public function add_admin_menu() {
         add_menu_page( __( 'Affiliate & Loyalty', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ), __( 'Affiliate & Loyalty', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ), 'manage_options', $this->plugin_name, array( $this, 'display_dashboard_page' ), 'dashicons-groups', 58 );
         add_submenu_page( $this->plugin_name, __( 'Commissions', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ), __( 'Commissions', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ), 'manage_options', $this->plugin_name . '-commissions', array( $this, 'display_commissions_page' ) );
         add_submenu_page( $this->plugin_name, __( 'Rules', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ), __( 'Rules', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ), 'manage_options', $this->plugin_name . '-rules', array( $this, 'display_rules_page' ) );
+        add_submenu_page( $this->plugin_name, __( 'Reports', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ), __( 'Reports', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ), 'manage_options', $this->plugin_name . '-reports', array( $this, 'display_reports_page' ) );
     }
 
     public function process_actions() {
@@ -117,5 +126,90 @@ class WP_Affiliate_Loyalty_Admin {
         else $rule = (object) ['id'=>0, 'name'=>'', 'module'=>'affiliate', 'conditions_json'=>'{}', 'actions_json'=>'{}', 'precedence'=>10, 'active'=>1];
         if (!$rule) { echo '<div class="wrap"><div class="error"><p>'.__('Rule not found.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN).'</p></div></div>'; return; }
         require WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'includes/admin/views/view-rule-edit-form.php';
+    }
+
+    public function display_reports_page() {
+        require_once WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'includes/admin/class-reports-data.php';
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e( 'Reports', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h1>
+            <?php
+            $active_tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'affiliate_reports';
+            ?>
+            <h2 class="nav-tab-wrapper">
+                <a href="?page=<?php echo esc_attr( $this->plugin_name ); ?>-reports&tab=affiliate_reports" class="nav-tab <?php echo $active_tab == 'affiliate_reports' ? 'nav-tab-active' : ''; ?>"><?php esc_html_e( 'Affiliate', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></a>
+                <a href="?page=<?php echo esc_attr( $this->plugin_name ); ?>-reports&tab=loyalty_reports" class="nav-tab <?php echo $active_tab == 'loyalty_reports' ? 'nav-tab-active' : ''; ?>"><?php esc_html_e( 'Loyalty', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></a>
+            </h2>
+            <div class="tab-content" style="padding-top: 20px;">
+                <?php if ( $active_tab == 'affiliate_reports' ) :
+                    $stats = Reports_Data::get_affiliate_stats();
+                ?>
+                    <h3><?php esc_html_e( 'Affiliate Stats Overview', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h3>
+                    <table class="form-table">
+                        <tr><th scope="row"><?php esc_html_e('Total Clicks', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?></th><td><?php echo esc_html(number_format_i18n($stats['total_clicks'])); ?></td></tr>
+                        <tr><th scope="row"><?php esc_html_e('Total Commissions', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?></th><td><?php echo esc_html(number_format_i18n($stats['total_commissions'])); ?></td></tr>
+                        <tr><th scope="row"><?php esc_html_e('Conversion Rate', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?></th><td><?php echo esc_html(number_format_i18n($stats['conversion_rate'], 2)); ?>%</td></tr>
+                        <tr><th scope="row"><?php esc_html_e('Paid Commissions Value', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?></th><td><?php echo esc_html(number_format_i18n($stats['paid_commissions_value'], 0)); ?> <?php esc_html_e('IRR'); ?></td></tr>
+                        <tr><th scope="row"><?php esc_html_e('Unpaid Commissions Value', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?></th><td><?php echo esc_html(number_format_i18n($stats['unpaid_commissions_value'], 0)); ?> <?php esc_html_e('IRR'); ?></td></tr>
+                    </table>
+                    <canvas id="commission-chart" width="400" height="200"></canvas>
+                    <?php
+                        $commission_chart_data = Reports_Data::get_commissions_by_day();
+                        $commission_labels = wp_json_encode( wp_list_pluck( $commission_chart_data, 'date' ) );
+                        $commission_values = wp_json_encode( wp_list_pluck( $commission_chart_data, 'total' ) );
+                    ?>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function () {
+                            const ctx = document.getElementById('commission-chart');
+                            new Chart(ctx, {
+                                type: 'line',
+                                data: {
+                                    labels: <?php echo $commission_labels; ?>,
+                                    datasets: [{
+                                        label: '<?php esc_html_e( "Commissions per Day", WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>',
+                                        data: <?php echo $commission_values; ?>,
+                                        borderWidth: 1
+                                    }]
+                                },
+                                options: { scales: { y: { beginAtZero: true } } }
+                            });
+                        });
+                    </script>
+                <?php else :
+                    $stats = Reports_Data::get_loyalty_stats();
+                ?>
+                    <h3><?php esc_html_e( 'Loyalty Stats Overview', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h3>
+                    <table class="form-table">
+                        <tr><th scope="row"><?php esc_html_e('Total Points Awarded', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?></th><td><?php echo esc_html(number_format_i18n($stats['points_awarded'])); ?></td></tr>
+                        <tr><th scope="row"><?php esc_html_e('Total Points Redeemed', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?></th><td><?php echo esc_html(number_format_i18n($stats['points_redeemed'])); ?></td></tr>
+                        <tr><th scope="row"><?php esc_html_e('Redemption Rate', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?></th><td><?php echo esc_html(number_format_i18n($stats['redemption_rate'], 2)); ?>%</td></tr>
+                    </table>
+                    <canvas id="points-chart" width="400" height="200"></canvas>
+                     <?php
+                        $points_chart_data = Reports_Data::get_points_by_day();
+                        $points_labels = wp_json_encode( wp_list_pluck( $points_chart_data, 'date' ) );
+                        $points_values = wp_json_encode( wp_list_pluck( $points_chart_data, 'total' ) );
+                    ?>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function () {
+                            const ctx = document.getElementById('points-chart');
+                            new Chart(ctx, {
+                                type: 'bar',
+                                data: {
+                                    labels: <?php echo $points_labels; ?>,
+                                    datasets: [{
+                                        label: '<?php esc_html_e( "Points Awarded per Day", WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>',
+                                        data: <?php echo $points_values; ?>,
+                                        borderWidth: 1
+                                    }]
+                                },
+                                options: { scales: { y: { beginAtZero: true } } }
+                            });
+                        });
+                    </script>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php
     }
 }
