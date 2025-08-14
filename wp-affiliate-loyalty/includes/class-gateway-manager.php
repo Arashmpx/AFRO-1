@@ -41,9 +41,26 @@ class Gateway_Manager {
         // Include our placeholder gateways
         require_once WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'includes/gateways/class-kavehnegar-gateway.php';
 
-        $gateways['kavehnegar'] = new KavehNegar_Gateway();
+        $gateways['kavehnegar'] = new Kavehnegar_Gateway();
 
         return apply_filters( 'wp_affiliate_loyalty_sms_gateways', $gateways );
+    }
+
+    /**
+     * Get the currently active sms gateway.
+     *
+     * @return SMS_Gateway|null
+     */
+    public static function get_active_sms_gateway() {
+        $settings = get_option( 'wp_aff_loyalty_settings', array() );
+        $active_gateway_id = $settings['sms']['active_gateway'] ?? null;
+
+        if ( ! $active_gateway_id ) {
+            return null;
+        }
+
+        $gateways = self::get_sms_gateways();
+        return $gateways[ $active_gateway_id ] ?? null;
     }
 
     /**

@@ -17,6 +17,152 @@ class WP_Affiliate_Loyalty_Admin {
         add_action( 'admin_notices', array( $this, 'display_admin_notices' ) );
         add_action( 'admin_post_save_affiliate_loyalty_rule', array( $this, 'handle_save_rule_form' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
+
+        // Payout Requests CPT Columns
+        add_filter( 'manage_aff_payout_request_posts_columns', array( $this, 'add_payout_request_columns' ) );
+        add_action( 'manage_aff_payout_request_posts_custom_column', array( $this, 'render_payout_request_columns' ), 10, 2 );
+
+        // Payout Request Meta Box
+        add_action( 'add_meta_boxes', array( $this, 'add_payout_request_meta_box' ) );
+        add_action( 'save_post_aff_payout_request', array( $this, 'save_payout_request_meta_box_data' ) );
+    }
+
+    public function save_payout_request_meta_box_data( $post_id ) {
+        // Check if our nonce is set.
+        if ( ! isset( $_POST['payout_details_nonce'] ) ) {
+            return;
+        }
+        // Verify that the nonce is valid.
+        if ( ! wp_verify_nonce( $_POST['payout_details_nonce'], 'save_payout_details' ) ) {
+            return;
+        }
+        // If this is an autosave, our form has not been submitted, so we don't want to do anything.
+        if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+            return;
+        }
+        // Check the user's permissions.
+        if ( ! current_user_can( 'edit_post', $post_id ) ) {
+            return;
+        }
+
+        $old_status = get_post_meta( $post_id, '_payout_status', true );
+        $new_status = isset( $_POST['payout_status'] ) ? sanitize_key( $_POST['payout_status'] ) : 'pending';
+
+        // Update status
+        update_post_meta( $post_id, '_payout_status', $new_status );
+
+        // Update transaction reference
+        if ( isset( $_POST['transaction_ref'] ) ) {
+            update_post_meta( $post_id, '_transaction_ref', sanitize_text_field( $_POST['transaction_ref'] ) );
+        }
+
+        // If status changed to rejected, refund the money to the user's wallet
+        if ( $new_status === 'rejected' && $old_status !== 'rejected' ) {
+            $amount = (float) get_post_meta( $post_id, '_payout_amount', true );
+            $affiliate_id = get_post_meta( $post_id, '_affiliate_id', true );
+            if ( $affiliate_id && $amount > 0 ) {
+                $this->update_wallet_balance( $affiliate_id, $amount ); // Add the amount back
+            }
+        }
+
+        // If status changed to completed, send an SMS
+        if ( $new_status === 'completed' && $old_status !== 'completed' ) {
+            $sms_gateway = Gateway_Manager::get_active_sms_gateway();
+            if ( $sms_gateway ) {
+                $affiliate_id = get_post_meta( $post_id, '_affiliate_id', true );
+                $phone = get_user_meta( $affiliate_id, 'billing_phone', true );
+                if( $phone ) {
+                    $amount = wc_price( get_post_meta( $post_id, '_payout_amount', true ) );
+                    $ref = get_post_meta( $post_id, '_transaction_ref', true );
+                    $message = sprintf(
+                        "درخواست تسویه حساب شما به مبلغ %s با موفقیت انجام شد. شماره پیگیری: %s",
+                        $amount,
+                        $ref
+                    );
+                    $sms_gateway->send_sms( $phone, $message );
+                }
+            }
+        }
+    }
+
+    public function add_payout_request_meta_box() {
+        add_meta_box(
+            'payout_request_details',
+            __( 'Payout Details', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ),
+            array( $this, 'render_payout_request_meta_box_content' ),
+            'aff_payout_request',
+            'normal',
+            'high'
+        );
+    }
+
+    public function render_payout_request_meta_box_content( $post ) {
+        wp_nonce_field( 'save_payout_details', 'payout_details_nonce' );
+
+        $amount = get_post_meta( $post->ID, '_payout_amount', true );
+        $status = get_post_meta( $post->ID, '_payout_status', true );
+        $affiliate_id = get_post_meta( $post->ID, '_affiliate_id', true );
+        $transaction_ref = get_post_meta( $post->ID, '_transaction_ref', true );
+        $user = get_userdata( $affiliate_id );
+        ?>
+        <table class="form-table">
+            <tr>
+                <th><?php esc_html_e( 'Affiliate', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th>
+                <td><?php echo esc_html( $user->display_name ); ?> (ID: <?php echo esc_html($affiliate_id); ?>)</td>
+            </tr>
+            <tr>
+                <th><?php esc_html_e( 'Amount', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th>
+                <td><strong><?php echo esc_html( wc_price( $amount ) ); ?></strong></td>
+            </tr>
+            <tr>
+                <th><label for="payout_status"><?php esc_html_e( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></label></th>
+                <td>
+                    <select name="payout_status" id="payout_status">
+                        <option value="pending" <?php selected( $status, 'pending' ); ?>><?php esc_html_e( 'Pending', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></option>
+                        <option value="completed" <?php selected( $status, 'completed' ); ?>><?php esc_html_e( 'Completed', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></option>
+                        <option value="rejected" <?php selected( $status, 'rejected' ); ?>><?php esc_html_e( 'Rejected', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="transaction_ref"><?php esc_html_e( 'Transaction Reference', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></label></th>
+                <td>
+                    <input type="text" id="transaction_ref" name="transaction_ref" value="<?php echo esc_attr( $transaction_ref ); ?>" class="widefat" />
+                    <p class="description"><?php esc_html_e( 'Enter the transaction ID or reference number from your manual payment.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></p>
+                </td>
+            </tr>
+        </table>
+        <?php
+    }
+
+    public function add_payout_request_columns( $columns ) {
+        $new_columns = array();
+        $new_columns['cb'] = $columns['cb'];
+        $new_columns['title'] = __( 'Request Details', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN );
+        $new_columns['payout_amount'] = __( 'Amount', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN );
+        $new_columns['affiliate'] = __( 'Affiliate', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN );
+        $new_columns['payout_status'] = __( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN );
+        $new_columns['date'] = $columns['date'];
+        return $new_columns;
+    }
+
+    public function render_payout_request_columns( $column, $post_id ) {
+        switch ( $column ) {
+            case 'payout_amount':
+                echo esc_html( wc_price( get_post_meta( $post_id, '_payout_amount', true ) ) );
+                break;
+            case 'affiliate':
+                $user_id = get_post_meta( $post_id, '_affiliate_id', true );
+                if ( $user_id ) {
+                    $user = get_userdata( $user_id );
+                    echo esc_html( $user->display_name );
+                }
+                break;
+            case 'payout_status':
+                $status = get_post_meta( $post_id, '_payout_status', true );
+                echo '<span class="payout-status-' . esc_attr($status) . '">' . esc_html( ucfirst( $status ) ) . '</span>';
+                break;
+        }
     }
 
     public function add_admin_menu() {
@@ -37,6 +183,9 @@ class WP_Affiliate_Loyalty_Admin {
         register_setting( $this->settings_option_name, $this->settings_option_name );
         require_once WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'includes/class-gateway-manager.php';
 
+        add_settings_section( 'affiliate_settings_section', 'Affiliate Settings', null, $this->plugin_name . '-settings' );
+        add_settings_field( 'level_2_commission_rate', 'Level 2 Commission Rate (%)', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'affiliate_settings_section', ['id' => 'level_2_commission_rate', 'description' => 'The commission rate for parent affiliates (e.g., 10 for 10%). Leave blank or 0 to disable.'] );
+
         add_settings_section( 'payout_gateway_section', 'Payout Gateway Settings', null, $this->plugin_name . '-settings' );
         $payout_gateways = Gateway_Manager::get_payout_gateways();
         add_settings_field( 'active_payout_gateway', 'Active Payout Gateway', array( $this, 'render_gateway_select_field'), $this->plugin_name . '-settings', 'payout_gateway_section', ['gateways' => $payout_gateways, 'type' => 'payout'] );
@@ -45,6 +194,17 @@ class WP_Affiliate_Loyalty_Admin {
             add_settings_section( $section_id, $gateway->name . ' Settings', null, $this->plugin_name . '-settings' );
             foreach ($gateway->get_settings_fields() as $field_id => $field) {
                 add_settings_field( "payout_{$id}_{$field_id}", $field['title'], array($this, 'render_gateway_field'), $this->plugin_name . '-settings', $section_id, ['gateway_id' => $id, 'field_id' => $field_id, 'field' => $field, 'type' => 'payout'] );
+            }
+        }
+
+        add_settings_section( 'sms_gateway_section', 'SMS Gateway Settings', null, $this->plugin_name . '-settings' );
+        $sms_gateways = Gateway_Manager::get_sms_gateways();
+        add_settings_field( 'active_sms_gateway', 'Active SMS Gateway', array( $this, 'render_gateway_select_field'), $this->plugin_name . '-settings', 'sms_gateway_section', ['gateways' => $sms_gateways, 'type' => 'sms'] );
+        foreach ($sms_gateways as $id => $gateway) {
+            $section_id = 'sms_gateway_' . $id . '_section';
+            add_settings_section( $section_id, $gateway->name . ' Settings', null, $this->plugin_name . '-settings' );
+            foreach ($gateway->get_settings_fields() as $field_id => $field) {
+                add_settings_field( "sms_{$id}_{$field_id}", $field['title'], array($this, 'render_gateway_field'), $this->plugin_name . '-settings', $section_id, ['gateway_id' => $id, 'field_id' => $field_id, 'field' => $field, 'type' => 'sms'] );
             }
         }
     }
@@ -62,6 +222,15 @@ class WP_Affiliate_Loyalty_Admin {
         $value = $options[$args['type']][$args['gateway_id']][$args['field_id']] ?? $args['field']['default'] ?? '';
         echo "<input type='text' name='{$this->settings_option_name}[{$args['type']}][{$args['gateway_id']}][{$args['field_id']}]' value='" . esc_attr($value) . "' class='regular-text' />";
         if (!empty($args['field']['description'])) echo "<p class='description'>{$args['field']['description']}</p>";
+    }
+
+    public function render_basic_text_field($args) {
+        $options = get_option($this->settings_option_name);
+        $value = $options[$args['id']] ?? '';
+        echo "<input type='text' name='{$this->settings_option_name}[{$args['id']}]' value='" . esc_attr($value) . "' class='regular-text' />";
+        if (!empty($args['description'])) {
+            echo "<p class='description'>{$args['description']}</p>";
+        }
     }
 
     public function display_settings_page() {
@@ -122,13 +291,66 @@ class WP_Affiliate_Loyalty_Admin {
     public function handle_save_rule_form() {
         if ( !isset($_POST['save_rule_nonce']) || !wp_verify_nonce( $_POST['save_rule_nonce'], 'save_rule_nonce' ) ) wp_die( 'Security check failed.' );
         if ( !current_user_can( 'manage_options' ) ) wp_die( 'You do not have permission to save rules.' );
+
+        // Build conditions from form inputs
+        $conditions = array();
+        if ( ! empty( $_POST['conditions']['min_total'] ) ) {
+            $conditions['min_total'] = (float) $_POST['conditions']['min_total'];
+        }
+        if ( ! empty( $_POST['conditions']['products_in_cart'] ) ) {
+            $conditions['products_in_cart'] = array_map( 'absint', explode( ',', sanitize_text_field( $_POST['conditions']['products_in_cart'] ) ) );
+        }
+        if ( ! empty( $_POST['conditions']['categories_in_cart'] ) ) {
+            $conditions['categories_in_cart'] = array_map( 'absint', explode( ',', sanitize_text_field( $_POST['conditions']['categories_in_cart'] ) ) );
+        }
+        if ( isset( $_POST['conditions']['is_first_purchase'] ) ) {
+            $conditions['is_first_purchase'] = 1;
+        }
+        if ( ! empty( $_POST['conditions']['user_role'] ) ) {
+            $conditions['user_role'] = sanitize_key( $_POST['conditions']['user_role'] );
+        }
+
         global $wpdb;
         $rules_table = $wpdb->prefix . 'aff_loyalty_rules';
         $rule_id = isset( $_POST['rule_id'] ) ? absint( $_POST['rule_id'] ) : 0;
-        $data = array( 'name' => sanitize_text_field($_POST['name']), 'module' => sanitize_key($_POST['module']), 'conditions_json' => wp_unslash(trim($_POST['conditions_json'])), 'actions_json' => wp_unslash(trim($_POST['actions_json'])), 'precedence' => absint($_POST['precedence']), 'active' => isset($_POST['active']) ? 1 : 0 );
-        if ( json_decode($data['conditions_json']) === null || json_decode($data['actions_json']) === null ) wp_die( 'Invalid JSON format.' );
-        if ( $rule_id > 0 ) $wpdb->update( $rules_table, $data, array( 'id' => $rule_id ), $this->get_rule_data_formats(), array( '%d' ) );
-        else { $data['created_at'] = current_time( 'mysql' ); $wpdb->insert( $rules_table, $data, $this->get_rule_data_formats() ); }
+
+        // Build actions from form inputs
+        $actions = array();
+        $action_type = sanitize_key( $_POST['actions']['type'] ?? '' );
+
+        if ( ! empty( $action_type ) ) {
+            $actions['type'] = $action_type;
+
+            if ( 'points_per_currency_unit' === $action_type ) {
+                $actions['value'] = array(
+                    'points'     => (float) ( $_POST['actions']['value_complex']['points'] ?? 0 ),
+                    'per_amount' => (float) ( $_POST['actions']['value_complex']['per_amount'] ?? 0 ),
+                );
+            } else {
+                $actions['value'] = (float) ( $_POST['actions']['value'] ?? 0 );
+            }
+        }
+
+        $data = array(
+            'name' => sanitize_text_field($_POST['name']),
+            'module' => sanitize_key($_POST['module']),
+            'conditions_json' => wp_json_encode( $conditions ),
+            'actions_json' => wp_json_encode( $actions ),
+            'precedence' => absint($_POST['precedence']),
+            'active' => isset($_POST['active']) ? 1 : 0
+        );
+
+        if ( empty( $actions ) || ( 'points_per_currency_unit' === $actions['type'] && ( !isset($actions['value']['points']) || $actions['value']['points'] <= 0 || !isset($actions['value']['per_amount']) || $actions['value']['per_amount'] <= 0 ) ) ) {
+            wp_die( 'Invalid or incomplete action details provided.' );
+        }
+
+        if ( $rule_id > 0 ) {
+            $wpdb->update( $rules_table, $data, array( 'id' => $rule_id ), $this->get_rule_data_formats(), array( '%d' ) );
+        } else {
+            $data['created_at'] = current_time( 'mysql' );
+            $wpdb->insert( $rules_table, $data, $this->get_rule_data_formats() );
+        }
+
         wp_safe_redirect( add_query_arg( array( 'page' => $this->plugin_name . '-rules', 'message' => 'rule-saved' ), admin_url( 'admin.php' ) ) );
         exit;
     }

@@ -125,17 +125,38 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
         if ( ! $affiliate_id ) return;
         $order = wc_get_order( $order_id );
         if ( ! $order || ( $order->get_customer_id() && $order->get_customer_id() === $affiliate_id ) ) return;
+
         global $wpdb;
         $commissions_table = $wpdb->prefix . 'aff_loyalty_commissions';
-        if ( $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$commissions_table} WHERE order_id = %d", $order_id ) ) ) return;
+
+        // Check if a commission for this specific affiliate and order already exists.
+        if ( $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$commissions_table} WHERE order_id = %d AND affiliate_id = %d", $order_id, $affiliate_id ) ) ) return;
+
         require_once WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'includes/services/class-rule-processor.php';
         $rules_table = $wpdb->prefix . 'aff_loyalty_rules';
         $rules = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$rules_table} WHERE module = %s AND active = 1 ORDER BY precedence ASC", 'affiliate' ) );
         if ( empty( $rules ) ) return;
+
         $rule_processor = new Rule_Processor( $order, $rules );
         $commission_amount = $rule_processor->evaluate();
+
         if ( $commission_amount > 0 ) {
+            // Insert primary commission
             $wpdb->insert( $commissions_table, array('order_id' => $order_id, 'affiliate_id' => $affiliate_id, 'amount' => $commission_amount, 'status' => 'pending', 'created_at' => current_time('mysql')), array('%d', '%d', '%f', '%s', '%s') );
+
+            // Handle Level 2 Commission
+            $settings = get_option('wp_aff_loyalty_settings');
+            $level_2_rate = isset($settings['level_2_commission_rate']) ? (float) $settings['level_2_commission_rate'] : 0;
+            $parent_affiliate_id = get_user_meta( $affiliate_id, '_aff_loyalty_parent_affiliate_id', true );
+
+            if ( $level_2_rate > 0 && $parent_affiliate_id ) {
+                $parent_affiliate_id = absint($parent_affiliate_id);
+                $level_2_commission_amount = $commission_amount * ( $level_2_rate / 100 );
+
+                if ( $level_2_commission_amount > 0 ) {
+                    $wpdb->insert( $commissions_table, array('order_id' => $order_id, 'affiliate_id' => $parent_affiliate_id, 'amount' => $level_2_commission_amount, 'status' => 'pending', 'created_at' => current_time('mysql')), array('%d', '%d', '%f', '%s', '%s') );
+                }
+            }
         }
     }
 }
