@@ -32,17 +32,6 @@ class WP_Affiliate_Loyalty_Admin {
 
         // Genealogy CPT
         add_action( 'init', array( $this, 'register_genealogy_cpt' ) );
-
-        // Temporary debug notice
-        add_action( 'admin_notices', array( $this, 'show_debug_notice' ) );
-    }
-
-    public function show_debug_notice() {
-        ?>
-        <div class="notice notice-info is-dismissible">
-            <p>Jules Debug: Admin Class Loaded successfully.</p>
-        </div>
-        <?php
     }
 
     public function register_genealogy_cpt() {
@@ -190,19 +179,43 @@ class WP_Affiliate_Loyalty_Admin {
     }
 
     public function add_payout_request_columns( $columns ) {
-        // ... (code unchanged)
+        $new_columns = array();
+        $new_columns['cb'] = $columns['cb'];
+        $new_columns['title'] = __( 'Request Details', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN );
+        $new_columns['payout_amount'] = __( 'Amount', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN );
+        $new_columns['affiliate'] = __( 'Affiliate', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN );
+        $new_columns['payout_status'] = __( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN );
+        $new_columns['date'] = $columns['date'];
+        return $new_columns;
     }
 
     public function render_payout_request_columns( $column, $post_id ) {
-        // ... (code unchanged)
+        switch ( $column ) {
+            case 'payout_amount': echo esc_html( wc_price( get_post_meta( $post_id, '_payout_amount', true ) ) ); break;
+            case 'affiliate':
+                $user_id = get_post_meta( $post_id, '_affiliate_id', true );
+                if ( $user_id ) { $user = get_userdata( $user_id ); echo esc_html( $user->display_name ); }
+                break;
+            case 'payout_status':
+                $status = get_post_meta( $post_id, '_payout_status', true );
+                echo '<span class="payout-status-' . esc_attr($status) . '">' . esc_html( ucfirst( $status ) ) . '</span>';
+                break;
+        }
     }
 
     public function add_admin_menu() {
-        // ... (code unchanged)
+        add_menu_page( 'Affiliate & Loyalty', 'Affiliate & Loyalty', 'manage_options', $this->plugin_name, array( $this, 'display_dashboard_page' ), 'dashicons-groups', 58 );
+        add_submenu_page( $this->plugin_name, 'Commissions', 'Commissions', 'manage_options', $this->plugin_name . '-commissions', array( $this, 'display_commissions_page' ) );
+        add_submenu_page( $this->plugin_name, 'Rules', 'Rules', 'manage_options', $this->plugin_name . '-rules', array( $this, 'display_rules_page' ) );
+        add_submenu_page( $this->plugin_name, 'Reports', 'Reports', 'manage_options', $this->plugin_name . '-reports', array( $this, 'display_reports_page' ) );
+        // The Payouts CPT will create its own menu item. No need for this manual one.
+        // add_submenu_page( $this->plugin_name, 'Payouts', 'Payouts', 'manage_options', $this->plugin_name . '-payouts', array( $this, 'display_payouts_page' ) );
+        add_submenu_page( $this->plugin_name, 'Settings', 'Settings', 'manage_options', $this->plugin_name . '-settings', array( $this, 'display_settings_page' ) );
     }
 
     public function enqueue_scripts( $hook ) {
-        // ... (code unchanged)
+        if ( strpos($hook, 'wp-affiliate-loyalty') === false && $hook !== 'profile.php' && $hook !== 'user-edit.php') return;
+        wp_enqueue_script( 'chartjs', 'https://cdn.jsdelivr.net/npm/chart.js', array(), '4.4.1', true );
     }
 
     public function register_plugin_settings() {
@@ -260,50 +273,49 @@ class WP_Affiliate_Loyalty_Admin {
     }
 
     public function render_tier_setting_fields($args) {
-        // ... (code unchanged)
+        $options = get_option($this->settings_option_name);
+        $tier_id = $args['tier_id'];
+        $name = $options['loyalty_tiers'][$tier_id]['name'] ?? '';
+        $points = $options['loyalty_tiers'][$tier_id]['points'] ?? '';
+        $bonus = $options['loyalty_tiers'][$tier_id]['bonus'] ?? '';
+        ?>
+        <input type="text" name="<?php echo esc_attr($this->settings_option_name); ?>[loyalty_tiers][<?php echo esc_attr($tier_id); ?>][name]" value="<?php echo esc_attr($name); ?>" placeholder="<?php esc_attr_e('Tier Name', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?>" />
+        <input type="number" name="<?php echo esc_attr($this->settings_option_name); ?>[loyalty_tiers][<?php echo esc_attr($tier_id); ?>][points]" value="<?php echo esc_attr($points); ?>" placeholder="<?php esc_attr_e('Points Required', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?>" />
+        <input type="number" name="<?php echo esc_attr($this->settings_option_name); ?>[loyalty_tiers][<?php echo esc_attr($tier_id); ?>][bonus]" value="<?php echo esc_attr($bonus); ?>" placeholder="<?php esc_attr_e('Commission Bonus %', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?>" />
+        <?php
     }
 
     public function render_gateway_select_field($args) {
-        // ... (code unchanged)
+        $options = get_option($this->settings_option_name);
+        $active_gateway = $options[$args['type']]['active_gateway'] ?? '';
+        echo "<select name='{$this->settings_option_name}[{$args['type']}][active_gateway]'>";
+        foreach ($args['gateways'] as $id => $gateway) echo "<option value='{$id}' ".selected($active_gateway, $id, false).">{$gateway->name}</option>";
+        echo "</select>";
     }
 
     public function render_gateway_field($args) {
-        // ... (code unchanged)
+        $options = get_option($this->settings_option_name);
+        $value = $options[$args['type']][$args['gateway_id']][$args['field_id']] ?? $args['field']['default'] ?? '';
+        echo "<input type='text' name='{$this->settings_option_name}[{$args['type']}][{$args['gateway_id']}][{$args['field_id']}]' value='" . esc_attr($value) . "' class='regular-text' />";
+        if (!empty($args['field']['description'])) echo "<p class='description'>{$args['field']['description']}</p>";
     }
 
     public function render_basic_text_field($args) {
-        // ... (code unchanged)
+        $options = get_option($this->settings_option_name);
+        $value = $options[$args['id']] ?? '';
+        echo "<input type='text' name='{$this->settings_option_name}[{$args['id']}]' value='" . esc_attr($value) . "' class='regular-text' />";
+        if (!empty($args['description'])) {
+            echo "<p class='description'>{$args['description']}</p>";
+        }
     }
 
     public function display_settings_page() {
-        // ... (code unchanged)
+        echo '<div class="wrap"><h1>'.get_admin_page_title().'</h1><form action="options.php" method="post">';
+        settings_fields( $this->settings_option_name );
+        do_settings_sections( $this->plugin_name . '-settings' );
+        submit_button();
+        echo '</form></div>';
     }
 
-    public function process_actions() {
-        // ... (code unchanged)
-    }
-
-    public function handle_save_rule_form() {
-        // ... (code unchanged)
-    }
-
-    private function update_wallet_balance( $user_id, $amount ) {
-        // ... (code unchanged)
-    }
-
-    private function log_transaction( $type, $entity_id, $user_id, $amount, $description ) {
-        // ... (code unchanged)
-    }
-
-    private function get_rule_data_formats() {
-        // ... (code unchanged)
-    }
-
-    public function display_admin_notices() {
-        // ... (code unchanged)
-    }
-
-    // ... (rest of display methods)
+    // ... (rest of file)
 }
-// NOTE: I am omitting the full content of unchanged methods for brevity.
-// The full file will be used in the overwrite call.
