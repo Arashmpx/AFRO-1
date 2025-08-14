@@ -21,6 +21,37 @@ class WP_Affiliate_Loyalty_Loyalty_Module {
         add_action( 'woocommerce_checkout_order_processed', array( $this, 'save_redeemed_points_to_order' ), 10, 2 );
         add_action( 'woocommerce_order_status_completed', array( $this, 'deduct_redeemed_points' ), 10, 1 );
         add_action( 'wp_affiliate_loyalty_dashboard_sections', array( $this, 'render_loyalty_dashboard_section' ), 20, 1 );
+        add_action( 'wp_affiliate_loyalty_daily_tier_update', array( $this, 'process_tier_updates' ) );
+    }
+
+    public function process_tier_updates() {
+        $settings = get_option( 'wp_aff_loyalty_settings' );
+        $tiers = isset($settings['loyalty_tiers']) ? (array) $settings['loyalty_tiers'] : array();
+
+        if ( empty( $tiers ) ) {
+            return;
+        }
+
+        // Sort tiers by points descending to check from highest to lowest
+        uasort($tiers, function($a, $b) {
+            return (int)($b['points'] ?? 0) <=> (int)($a['points'] ?? 0);
+        });
+
+        $users = get_users();
+
+        foreach ( $users as $user ) {
+            $current_points = $this->get_total_points_balance( $user->ID );
+            $new_tier_id = 0;
+
+            foreach ( $tiers as $tier_id => $tier_data ) {
+                if ( !empty($tier_data['name']) && !empty($tier_data['points']) && $current_points >= (int) $tier_data['points'] ) {
+                    $new_tier_id = $tier_id;
+                    break; // Found the highest qualifying tier
+                }
+            }
+
+            update_user_meta( $user->ID, '_loyalty_tier_id', $new_tier_id );
+        }
     }
 
     public function award_points_for_purchase( $order_id ) {

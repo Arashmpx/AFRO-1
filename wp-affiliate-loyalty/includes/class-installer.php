@@ -130,5 +130,23 @@ class WP_Affiliate_Loyalty_Installer {
         ";
 
         dbDelta( $sql );
+
+        // Schedule the daily tier update event
+        if ( ! wp_next_scheduled( 'wp_affiliate_loyalty_daily_tier_update' ) ) {
+            wp_schedule_event( time(), 'daily', 'wp_affiliate_loyalty_daily_tier_update' );
+        }
+    }
+
+    /**
+     * The code that runs on plugin deactivation.
+     * Clears the scheduled cron job.
+     *
+     * @since    1.0.0
+     */
+    public static function uninstall() {
+        wp_clear_scheduled_hook( 'wp_affiliate_loyalty_daily_tier_update' );
     }
 }
+
+// Register the deactivation hook
+register_deactivation_hook( WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'wp-affiliate-loyalty.php', array( 'WP_Affiliate_Loyalty_Installer', 'uninstall' ) );

@@ -273,6 +273,31 @@ class WP_Affiliate_Loyalty_Admin {
                 add_settings_field( "sms_{$id}_{$field_id}", $field['title'], array($this, 'render_gateway_field'), $this->plugin_name . '-settings', $section_id, ['gateway_id' => $id, 'field_id' => $field_id, 'field' => $field, 'type' => 'sms'] );
             }
         }
+
+        add_settings_section( 'loyalty_tier_settings_section', 'Loyalty Tier Settings', null, $this->plugin_name . '-settings' );
+        for ($i = 1; $i <= 5; $i++) {
+            add_settings_field(
+                'loyalty_tier_' . $i,
+                'Tier ' . $i,
+                array( $this, 'render_tier_setting_fields'),
+                $this->plugin_name . '-settings',
+                'loyalty_tier_settings_section',
+                ['tier_id' => $i]
+            );
+        }
+    }
+
+    public function render_tier_setting_fields($args) {
+        $options = get_option($this->settings_option_name);
+        $tier_id = $args['tier_id'];
+        $name = $options['loyalty_tiers'][$tier_id]['name'] ?? '';
+        $points = $options['loyalty_tiers'][$tier_id]['points'] ?? '';
+        $bonus = $options['loyalty_tiers'][$tier_id]['bonus'] ?? '';
+        ?>
+        <input type="text" name="<?php echo esc_attr($this->settings_option_name); ?>[loyalty_tiers][<?php echo esc_attr($tier_id); ?>][name]" value="<?php echo esc_attr($name); ?>" placeholder="<?php esc_attr_e('Tier Name', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?>" />
+        <input type="number" name="<?php echo esc_attr($this->settings_option_name); ?>[loyalty_tiers][<?php echo esc_attr($tier_id); ?>][points]" value="<?php echo esc_attr($points); ?>" placeholder="<?php esc_attr_e('Points Required', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?>" />
+        <input type="number" name="<?php echo esc_attr($this->settings_option_name); ?>[loyalty_tiers][<?php echo esc_attr($tier_id); ?>][bonus]" value="<?php echo esc_attr($bonus); ?>" placeholder="<?php esc_attr_e('Commission Bonus %', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?>" />
+        <?php
     }
 
     public function validate_mlm_settings( $input ) {
