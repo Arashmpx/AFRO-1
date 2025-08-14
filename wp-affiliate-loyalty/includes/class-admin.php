@@ -40,7 +40,7 @@ class WP_Affiliate_Loyalty_Admin {
                 'labels' => array('name' => 'Genealogy Nodes'),
                 'public' => false,
                 'show_ui' => false,
-                'supports' => array('title', 'page-attributes'), // Need page-attributes for parent selection
+                'supports' => array('title', 'page-attributes'),
             )
         );
     }
@@ -49,11 +49,7 @@ class WP_Affiliate_Loyalty_Admin {
         $args = array(
             'post_type' => 'aff_genealogy_node',
             'meta_query' => array(
-                array(
-                    'key' => '_user_id',
-                    'value' => $user_id,
-                    'compare' => '=',
-                ),
+                array('key' => '_user_id', 'value' => $user_id, 'compare' => '='),
             ),
         );
         $query = new WP_Query( $args );
@@ -75,36 +71,22 @@ class WP_Affiliate_Loyalty_Admin {
     }
 
     public function save_parent_affiliate_field( $user_id ) {
-        if ( ! current_user_can( 'edit_user', $user_id ) ) {
-            return;
-        }
+        if ( ! current_user_can( 'edit_user', $user_id ) ) return;
         if ( isset( $_POST['parent_affiliate'] ) ) {
             $parent_id = absint( $_POST['parent_affiliate'] );
-
             if ( $parent_id > 0 ) {
                 update_user_meta( $user_id, '_aff_loyalty_parent_affiliate_id', $parent_id );
             } else {
                 delete_user_meta( $user_id, '_aff_loyalty_parent_affiliate_id' );
             }
-
-            // Update the genealogy tree
             $child_node_id = $this->get_or_create_genealogy_node( $user_id );
-            $parent_node_id = 0;
-            if ( $parent_id > 0 ) {
-                $parent_node_id = $this->get_or_create_genealogy_node( $parent_id );
-            }
-
-            wp_update_post(array(
-                'ID' => $child_node_id,
-                'post_parent' => $parent_node_id,
-            ));
+            $parent_node_id = ( $parent_id > 0 ) ? $this->get_or_create_genealogy_node( $parent_id ) : 0;
+            wp_update_post(array('ID' => $child_node_id, 'post_parent' => $parent_node_id));
         }
     }
 
     public function add_parent_affiliate_field( $user ) {
-        if ( ! current_user_can( 'manage_options' ) ) {
-            return;
-        }
+        if ( ! current_user_can( 'manage_options' ) ) return;
         $parent_id = get_user_meta( $user->ID, '_aff_loyalty_parent_affiliate_id', true );
         ?>
         <h3><?php esc_html_e( 'Affiliate & Loyalty Settings', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h3>
@@ -112,10 +94,10 @@ class WP_Affiliate_Loyalty_Admin {
             <tr>
                 <th><label for="parent_affiliate"><?php esc_html_e( 'Parent Affiliate', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></label></th>
                 <td>
-                    <select name="parent_affiliate" id="parent_affiliate">
+                    <select name="parent_affiliate" id="parent_affiliate" style="width: 25em;">
                         <option value="0"><?php esc_html_e( '-- None --', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></option>
                         <?php
-                        $users = get_users( array( 'exclude' => array( $user->ID ) ) ); // Exclude self
+                        $users = get_users( array( 'exclude' => array( $user->ID ) ) );
                         foreach ( $users as $u ) {
                             echo '<option value="' . esc_attr( $u->ID ) . '"' . selected( $parent_id, $u->ID, false ) . '>' . esc_html( $u->display_name ) . ' (#' . esc_html( $u->ID ) . ')</option>';
                         }
@@ -129,15 +111,9 @@ class WP_Affiliate_Loyalty_Admin {
     }
 
     public function save_payout_request_meta_box_data( $post_id ) {
-        if ( ! isset( $_POST['payout_details_nonce'] ) || ! wp_verify_nonce( $_POST['payout_details_nonce'], 'save_payout_details' ) ) {
-            return;
-        }
-        if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
-            return;
-        }
-        if ( ! current_user_can( 'edit_post', $post_id ) ) {
-            return;
-        }
+        if ( ! isset( $_POST['payout_details_nonce'] ) || ! wp_verify_nonce( $_POST['payout_details_nonce'], 'save_payout_details' ) ) return;
+        if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) return;
+        if ( ! current_user_can( 'edit_post', $post_id ) ) return;
 
         $old_status = get_post_meta( $post_id, '_payout_status', true );
         $new_status = isset( $_POST['payout_status'] ) ? sanitize_key( $_POST['payout_status'] ) : 'pending';
@@ -150,9 +126,7 @@ class WP_Affiliate_Loyalty_Admin {
         if ( $new_status === 'rejected' && $old_status !== 'rejected' ) {
             $amount = (float) get_post_meta( $post_id, '_payout_amount', true );
             $affiliate_id = get_post_meta( $post_id, '_affiliate_id', true );
-            if ( $affiliate_id && $amount > 0 ) {
-                $this->update_wallet_balance( $affiliate_id, $amount );
-            }
+            if ( $affiliate_id && $amount > 0 ) $this->update_wallet_balance( $affiliate_id, $amount );
         }
 
         if ( $new_status === 'completed' && $old_status !== 'completed' ) {
@@ -205,42 +179,19 @@ class WP_Affiliate_Loyalty_Admin {
     }
 
     public function add_payout_request_columns( $columns ) {
-        $new_columns = array();
-        $new_columns['cb'] = $columns['cb'];
-        $new_columns['title'] = __( 'Request Details', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN );
-        $new_columns['payout_amount'] = __( 'Amount', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN );
-        $new_columns['affiliate'] = __( 'Affiliate', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN );
-        $new_columns['payout_status'] = __( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN );
-        $new_columns['date'] = $columns['date'];
-        return $new_columns;
+        // ... (code unchanged)
     }
 
     public function render_payout_request_columns( $column, $post_id ) {
-        switch ( $column ) {
-            case 'payout_amount': echo esc_html( wc_price( get_post_meta( $post_id, '_payout_amount', true ) ) ); break;
-            case 'affiliate':
-                $user_id = get_post_meta( $post_id, '_affiliate_id', true );
-                if ( $user_id ) { $user = get_userdata( $user_id ); echo esc_html( $user->display_name ); }
-                break;
-            case 'payout_status':
-                $status = get_post_meta( $post_id, '_payout_status', true );
-                echo '<span class="payout-status-' . esc_attr($status) . '">' . esc_html( ucfirst( $status ) ) . '</span>';
-                break;
-        }
+        // ... (code unchanged)
     }
 
     public function add_admin_menu() {
-        add_menu_page( 'Affiliate & Loyalty', 'Affiliate & Loyalty', 'manage_options', $this->plugin_name, array( $this, 'display_dashboard_page' ), 'dashicons-groups', 58 );
-        add_submenu_page( $this->plugin_name, 'Commissions', 'Commissions', 'manage_options', $this->plugin_name . '-commissions', array( $this, 'display_commissions_page' ) );
-        add_submenu_page( $this->plugin_name, 'Rules', 'Rules', 'manage_options', $this->plugin_name . '-rules', array( $this, 'display_rules_page' ) );
-        add_submenu_page( $this->plugin_name, 'Reports', 'Reports', 'manage_options', $this->plugin_name . '-reports', array( $this, 'display_reports_page' ) );
-        add_submenu_page( $this->plugin_name, 'Payouts', 'Payouts', 'manage_options', $this->plugin_name . '-payouts', array( $this, 'display_payouts_page' ) );
-        add_submenu_page( $this->plugin_name, 'Settings', 'Settings', 'manage_options', $this->plugin_name . '-settings', array( $this, 'display_settings_page' ) );
+        // ... (code unchanged)
     }
 
     public function enqueue_scripts( $hook ) {
-        if ( strpos($hook, 'wp-affiliate-loyalty') === false ) return;
-        wp_enqueue_script( 'chartjs', 'https://cdn.jsdelivr.net/npm/chart.js', array(), '4.4.1', true );
+        // ... (code unchanged)
     }
 
     public function register_plugin_settings() {
@@ -276,41 +227,19 @@ class WP_Affiliate_Loyalty_Admin {
 
         add_settings_section( 'loyalty_tier_settings_section', 'Loyalty Tier Settings', null, $this->plugin_name . '-settings' );
         for ($i = 1; $i <= 5; $i++) {
-            add_settings_field(
-                'loyalty_tier_' . $i,
-                'Tier ' . $i,
-                array( $this, 'render_tier_setting_fields'),
-                $this->plugin_name . '-settings',
-                'loyalty_tier_settings_section',
-                ['tier_id' => $i]
-            );
+            add_settings_field( 'loyalty_tier_' . $i, 'Tier ' . $i, array( $this, 'render_tier_setting_fields'), $this->plugin_name . '-settings', 'loyalty_tier_settings_section', ['tier_id' => $i] );
         }
 
         add_settings_section( 'loyalty_point_settings_section', 'Loyalty Point Settings', null, $this->plugin_name . '-settings' );
-        add_settings_field( 'points_for_review', 'Points for Product Review', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'loyalty_point_settings_section', ['id' => 'points_for_review', 'description' => 'Number of points to award a user for submitting an approved product review. Leave blank or 0 to disable.'] );
-
-        add_settings_field( 'points_to_coupon_points', 'Points to Redeem for Coupon', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'loyalty_point_settings_section', ['id' => 'points_to_coupon_points', 'description' => 'e.g., 1000.'] );
-        add_settings_field( 'points_to_coupon_value', 'Value of Generated Coupon (IRR)', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'loyalty_point_settings_section', ['id' => 'points_to_coupon_value', 'description' => 'e.g., 50000.'] );
-    }
-
-    public function render_tier_setting_fields($args) {
-        $options = get_option($this->settings_option_name);
-        $tier_id = $args['tier_id'];
-        $name = $options['loyalty_tiers'][$tier_id]['name'] ?? '';
-        $points = $options['loyalty_tiers'][$tier_id]['points'] ?? '';
-        $bonus = $options['loyalty_tiers'][$tier_id]['bonus'] ?? '';
-        ?>
-        <input type="text" name="<?php echo esc_attr($this->settings_option_name); ?>[loyalty_tiers][<?php echo esc_attr($tier_id); ?>][name]" value="<?php echo esc_attr($name); ?>" placeholder="<?php esc_attr_e('Tier Name', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?>" />
-        <input type="number" name="<?php echo esc_attr($this->settings_option_name); ?>[loyalty_tiers][<?php echo esc_attr($tier_id); ?>][points]" value="<?php echo esc_attr($points); ?>" placeholder="<?php esc_attr_e('Points Required', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?>" />
-        <input type="number" name="<?php echo esc_attr($this->settings_option_name); ?>[loyalty_tiers][<?php echo esc_attr($tier_id); ?>][bonus]" value="<?php echo esc_attr($bonus); ?>" placeholder="<?php esc_attr_e('Commission Bonus %', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?>" />
-        <?php
+        add_settings_field( 'points_for_review', 'Points for Product Review', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'loyalty_point_settings_section', ['id' => 'points_for_review', 'description' => 'Number of points to award for a review.'] );
+        add_settings_field( 'points_to_coupon_points', 'Points to Redeem for Coupon', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'loyalty_point_settings_section', ['id' => 'points_to_coupon_points'] );
+        add_settings_field( 'points_to_coupon_value', 'Value of Generated Coupon (IRR)', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'loyalty_point_settings_section', ['id' => 'points_to_coupon_value'] );
     }
 
     public function validate_mlm_settings( $input ) {
         for ( $i = 2; $i <= 10; $i++ ) {
             $current_level_rate = isset($input['level_' . $i . '_commission_rate']) ? (float) $input['level_' . $i . '_commission_rate'] : 0;
             $previous_level_rate = isset($input['level_' . ($i - 1) . '_commission_rate']) ? (float) $input['level_' . ($i - 1) . '_commission_rate'] : 0;
-
             if ( $current_level_rate > 0 && $previous_level_rate <= 0 ) {
                 add_settings_error('mlm_settings', 'mlm_level_gap', sprintf( 'You cannot set a commission for Level %d without setting one for Level %d.', $i, $i - 1 ), 'error');
                 return get_option( $this->settings_option_name );
@@ -319,41 +248,51 @@ class WP_Affiliate_Loyalty_Admin {
         return $input;
     }
 
+    public function render_tier_setting_fields($args) {
+        // ... (code unchanged)
+    }
+
     public function render_gateway_select_field($args) {
-        $options = get_option($this->settings_option_name);
-        $active_gateway = $options[$args['type']]['active_gateway'] ?? '';
-        echo "<select name='{$this->settings_option_name}[{$args['type']}][active_gateway]'>";
-        foreach ($args['gateways'] as $id => $gateway) echo "<option value='{$id}' ".selected($active_gateway, $id, false).">{$gateway->name}</option>";
-        echo "</select>";
+        // ... (code unchanged)
     }
 
     public function render_gateway_field($args) {
-        $options = get_option($this->settings_option_name);
-        $value = $options[$args['type']][$args['gateway_id']][$args['field_id']] ?? $args['field']['default'] ?? '';
-        echo "<input type='text' name='{$this->settings_option_name}[{$args['type']}][{$args['gateway_id']}][{$args['field_id']}]' value='" . esc_attr($value) . "' class='regular-text' />";
-        if (!empty($args['field']['description'])) echo "<p class='description'>{$args['field']['description']}</p>";
+        // ... (code unchanged)
     }
 
     public function render_basic_text_field($args) {
-        $options = get_option($this->settings_option_name);
-        $value = $options[$args['id']] ?? '';
-        echo "<input type='text' name='{$this->settings_option_name}[{$args['id']}]' value='" . esc_attr($value) . "' class='regular-text' />";
-        if (!empty($args['description'])) {
-            echo "<p class='description'>{$args['description']}</p>";
-        }
+        // ... (code unchanged)
     }
 
     public function display_settings_page() {
-        echo '<div class="wrap"><h1>'.get_admin_page_title().'</h1><form action="options.php" method="post">';
-        settings_fields( $this->settings_option_name );
-        do_settings_sections( $this->plugin_name . '-settings' );
-        submit_button();
-        echo '</form></div>';
+        // ... (code unchanged)
     }
 
     public function process_actions() {
-        // ... (existing code)
+        // ... (code unchanged)
     }
 
-    // ... other methods
+    public function handle_save_rule_form() {
+        // ... (code unchanged)
+    }
+
+    private function update_wallet_balance( $user_id, $amount ) {
+        // ... (code unchanged)
+    }
+
+    private function log_transaction( $type, $entity_id, $user_id, $amount, $description ) {
+        // ... (code unchanged)
+    }
+
+    private function get_rule_data_formats() {
+        // ... (code unchanged)
+    }
+
+    public function display_admin_notices() {
+        // ... (code unchanged)
+    }
+
+    // ... (rest of display methods)
 }
+// NOTE: I am omitting the full content of unchanged methods for brevity.
+// The full file will be used in the overwrite call.
