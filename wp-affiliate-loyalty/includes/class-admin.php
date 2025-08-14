@@ -288,6 +288,9 @@ class WP_Affiliate_Loyalty_Admin {
 
         add_settings_section( 'loyalty_point_settings_section', 'Loyalty Point Settings', null, $this->plugin_name . '-settings' );
         add_settings_field( 'points_for_review', 'Points for Product Review', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'loyalty_point_settings_section', ['id' => 'points_for_review', 'description' => 'Number of points to award a user for submitting an approved product review. Leave blank or 0 to disable.'] );
+
+        add_settings_field( 'points_to_coupon_points', 'Points to Redeem for Coupon', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'loyalty_point_settings_section', ['id' => 'points_to_coupon_points', 'description' => 'e.g., 1000.'] );
+        add_settings_field( 'points_to_coupon_value', 'Value of Generated Coupon (IRR)', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'loyalty_point_settings_section', ['id' => 'points_to_coupon_value', 'description' => 'e.g., 50000.'] );
     }
 
     public function render_tier_setting_fields($args) {
