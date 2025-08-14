@@ -1,199 +1,249 @@
 <?php
 /**
- * The Loyalty Module
+ * Loyalty Module
+ *
+ * This class handles the loyalty features of the plugin.
  */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit; // Exit if accessed directly.
+}
+
 class WP_Affiliate_Loyalty_Loyalty_Module {
-
-    protected $module_name;
-
     public function __construct() {
-        $this->module_name = 'loyalty';
-        $this->add_hooks();
+        // Actions and filters for the loyalty module
+        add_action('woocommerce_order_status_completed', array($this, 'award_points_for_purchase'));
+        add_action('wp_footer', array($this, 'display_points_redemption_form'));
+        add_action('wp_ajax_wal_redeem_points', array($this, 'handle_points_redemption'));
+        add_action('wp_ajax_nopriv_wal_redeem_points', array($this, 'handle_points_redemption'));
+
+        // Action to award points for product reviews
+        add_action('comment_post', array($this, 'award_points_for_review'), 10, 2);
+
+        // Schedule daily event for tier updates
+        if (!wp_next_scheduled('wal_daily_tier_update_event')) {
+            wp_schedule_event(time(), 'daily', 'wal_daily_tier_update_event');
+        }
+        add_action('wal_daily_tier_update_event', array($this, 'update_user_tiers_daily'));
     }
 
-    private function add_hooks() {
-        add_action( 'woocommerce_order_status_completed', array( $this, 'award_points_for_purchase' ), 20, 1 );
-        add_action( 'user_register', array( $this, 'award_points_for_registration' ), 10, 1 );
-        add_action( 'wp_affiliate_loyalty_daily_tier_update', array( $this, 'process_tier_updates' ) );
-        add_action( 'wp_set_comment_status', array( $this, 'on_comment_status_change' ), 10, 2 );
-        add_action( 'wp_affiliate_loyalty_dashboard_sections', array( $this, 'render_loyalty_dashboard_section' ), 20, 1 );
-        add_action( 'wp_ajax_redeem_points_for_coupon', array( $this, 'redeem_points_for_coupon_handler' ) );
+    /**
+     * Award points to the user after a purchase.
+     *
+     * @param int $order_id The ID of the completed order.
+     */
+    public function award_points_for_purchase($order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return;
+        }
+
+        $user_id = $order->get_user_id();
+        if (!$user_id) {
+            return;
+        }
+
+        $points_per_unit = get_option('wal_loyalty_points_per_currency_unit', 1);
+        $total = $order->get_total();
+        $points_earned = floor($total * $points_per_unit);
+
+        if ($points_earned > 0) {
+            $current_points = get_user_meta($user_id, 'wal_loyalty_points', true);
+            $new_total_points = (int)$current_points + $points_earned;
+            update_user_meta($user_id, 'wal_loyalty_points', $new_total_points);
+
+            // Add a note to the order
+            $order->add_order_note(sprintf(__('%d loyalty points awarded to the customer.', 'wp-affiliate-loyalty'), $points_earned));
+        }
     }
 
-    public function redeem_points_for_coupon_handler() {
-        check_ajax_referer( 'affiliate_dashboard_nonce', 'nonce' );
-        if ( ! is_user_logged_in() ) {
-            wp_send_json_error( array('message' => 'Not logged in') );
+    /**
+     * Display the points redemption form on the cart page.
+     */
+    public function display_points_redemption_form() {
+        if (is_user_logged_in() && is_cart()) {
+            $current_user = wp_get_current_user();
+            $points = get_user_meta($current_user->ID, 'wal_loyalty_points', true);
+            $points_to_value_rate = get_option('wal_loyalty_points_to_value_rate', 100); // e.g., 100 points = 1 unit of currency
+
+            if ($points > 0) {
+                ?>
+                <div class="wal-redeem-points-container">
+                    <h3><?php _e('Redeem Your Loyalty Points', 'wp-affiliate-loyalty'); ?></h3>
+                    <p><?php printf(__('You have %s points.', 'wp-affiliate-loyalty'), '<strong>' . $points . '</strong>'); ?></p>
+                    <p><?php printf(__('Each %d points can be redeemed for a %s coupon.', 'wp-affiliate-loyalty'), $points_to_value_rate, wc_price(1)); ?></p>
+                    <form id="wal-redeem-points-form">
+                        <input type="number" name="points_to_redeem" id="points_to_redeem" min="1" max="<?php echo esc_attr($points); ?>" required>
+                        <button type="submit"><?php _e('Redeem for Coupon', 'wp-affiliate-loyalty'); ?></button>
+                        <?php wp_nonce_field('wal_redeem_points_nonce', 'wal_redeem_nonce'); ?>
+                    </form>
+                    <div id="wal-redeem-message"></div>
+                </div>
+                <script type="text/javascript">
+                    jQuery(function($) {
+                        $('#wal-redeem-points-form').on('submit', function(e) {
+                            e.preventDefault();
+                            var form = $(this);
+                            var points = $('#points_to_redeem').val();
+                            var nonce = $('#wal_redeem_nonce').val();
+
+                            $.ajax({
+                                type: 'POST',
+                                url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                                data: {
+                                    action: 'wal_redeem_points',
+                                    points: points,
+                                    nonce: nonce
+                                },
+                                success: function(response) {
+                                    $('#wal-redeem-message').html(response.data.message);
+                                    if (response.success) {
+                                        setTimeout(function() {
+                                            window.location.reload();
+                                        }, 2000);
+                                    }
+                                }
+                            });
+                        });
+                    });
+                </script>
+                <?php
+            }
+        }
+    }
+
+    /**
+     * Handle the AJAX request for points redemption.
+     */
+    public function handle_points_redemption() {
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'wal_redeem_points_nonce')) {
+            wp_send_json_error(array('message' => __('Security check failed.', 'wp-affiliate-loyalty')));
+            return;
+        }
+
+        if (!is_user_logged_in()) {
+            wp_send_json_error(array('message' => __('You must be logged in to redeem points.', 'wp-affiliate-loyalty')));
+            return;
         }
 
         $user_id = get_current_user_id();
-        $settings = get_option( 'wp_aff_loyalty_settings' );
-        $points_needed = isset( $settings['points_to_coupon_points'] ) ? (int) $settings['points_to_coupon_points'] : 0;
-        $coupon_value = isset( $settings['points_to_coupon_value'] ) ? (float) $settings['points_to_coupon_value'] : 0;
+        $points_to_redeem = isset($_POST['points']) ? intval($_POST['points']) : 0;
+        $current_points = get_user_meta($user_id, 'wal_loyalty_points', true);
 
-        if ( $points_needed <= 0 || $coupon_value <= 0 ) {
-            wp_send_json_error( array('message' => 'Coupon redemption is not configured correctly.') );
+        if ($points_to_redeem <= 0) {
+            wp_send_json_error(array('message' => __('Please enter a valid number of points to redeem.', 'wp-affiliate-loyalty')));
+            return;
         }
 
-        $user_balance = $this->get_total_points_balance( $user_id );
-        if ( $user_balance < $points_needed ) {
-            wp_send_json_error( array('message' => 'You do not have enough points.') );
+        if ($points_to_redeem > $current_points) {
+            wp_send_json_error(array('message' => __('You do not have enough points to redeem.', 'wp-affiliate-loyalty')));
+            return;
         }
 
-        $coupon_code = 'POINTS-' . strtoupper( wp_generate_password( 8, false ) );
-        $coupon = new WC_Coupon();
-        $coupon->set_code( $coupon_code );
-        $coupon->set_discount_type( 'fixed_cart' );
-        $coupon->set_amount( $coupon_value );
-        $coupon->set_individual_use( true );
-        $coupon->set_usage_limit( 1 );
-        $coupon->set_usage_limit_per_user( 1 );
-        $coupon->set_email_restrictions( array( wp_get_current_user()->user_email ) );
-        $coupon->save();
+        $points_to_value_rate = get_option('wal_loyalty_points_to_value_rate', 100);
+        if ($points_to_value_rate <= 0) {
+             wp_send_json_error(array('message' => __('Invalid point redemption rate configured.', 'wp-affiliate-loyalty')));
+            return;
+        }
+        $coupon_amount = $points_to_redeem / $points_to_value_rate;
 
-        $this->spend_points( $user_id, $points_needed, sprintf( 'Redeemed for coupon %s', $coupon_code ), $coupon->get_id() );
+        // Create a new WooCommerce coupon
+        $coupon_code = 'REDEEM_' . $user_id . '_' . time();
+        $coupon = array(
+            'post_title' => $coupon_code,
+            'post_content' => '',
+            'post_status' => 'publish',
+            'post_author' => 1,
+            'post_type' => 'shop_coupon'
+        );
 
-        wp_send_json_success( array( 'coupon_code' => $coupon_code, 'message' => 'Your coupon has been generated!' ) );
+        $new_coupon_id = wp_insert_post($coupon);
+
+        update_post_meta($new_coupon_id, 'discount_type', 'fixed_cart');
+        update_post_meta($new_coupon_id, 'coupon_amount', $coupon_amount);
+        update_post_meta($new_coupon_id, 'individual_use', 'yes');
+        update_post_meta($new_coupon_id, 'usage_limit', '1');
+        update_post_meta($new_coupon_id, 'usage_limit_per_user', '1');
+        update_post_meta($new_coupon_id, 'expiry_date', ''); // No expiry
+        update_post_meta($new_coupon_id, 'apply_before_tax', 'yes');
+        update_post_meta($new_coupon_id, 'free_shipping', 'no');
+
+        // Deduct points from user
+        $new_points_total = $current_points - $points_to_redeem;
+        update_user_meta($user_id, 'wal_loyalty_points', $new_points_total);
+
+        // Apply the coupon to the cart automatically
+        if (!wc_coupons_enabled()) {
+             wp_send_json_success(array('message' => sprintf(__('Coupon %s created successfully! Please apply it manually.', 'wp-affiliate-loyalty'), $coupon_code)));
+             return;
+        }
+        WC()->cart->apply_coupon($coupon_code);
+
+        wp_send_json_success(array(
+            'message' => sprintf(__('Success! %s coupon for %s has been created and applied to your cart.', 'wp-affiliate-loyalty'), $coupon_code, wc_price($coupon_amount))
+        ));
     }
 
-    public function process_tier_updates() {
-        $settings = get_option( 'wp_aff_loyalty_settings' );
-        $tiers = isset($settings['loyalty_tiers']) ? (array) $settings['loyalty_tiers'] : array();
-        if ( empty( $tiers ) ) return;
-        uasort($tiers, function($a, $b) { return (int)($b['points'] ?? 0) <=> (int)($a['points'] ?? 0); });
-        $users = get_users();
-        foreach ( $users as $user ) {
-            $current_points = $this->get_total_points_balance( $user->ID );
-            $new_tier_id = 0;
-            foreach ( $tiers as $tier_id => $tier_data ) {
-                if ( !empty($tier_data['name']) && !empty($tier_data['points']) && $current_points >= (int) $tier_data['points'] ) {
-                    $new_tier_id = $tier_id;
-                    break;
+
+    /**
+     * Award points for submitting an approved product review.
+     */
+    public function award_points_for_review($comment_id, $comment_approved) {
+        if ($comment_approved === 1) { // Check if the comment is approved
+            $comment = get_comment($comment_id);
+
+            // Check if it's a product review
+            if ($comment && get_post_type($comment->comment_post_ID) == 'product') {
+                $user_id = $comment->user_id;
+
+                if ($user_id) {
+                    $points_for_review = get_option('wal_loyalty_points_for_review', 0);
+                    if ($points_for_review > 0) {
+                        $current_points = get_user_meta($user_id, 'wal_loyalty_points', true);
+                        $new_total_points = (int)$current_points + $points_for_review;
+                        update_user_meta($user_id, 'wal_loyalty_points', $new_total_points);
+
+                        // Optional: Add a note to the user or admin
+                        // For example, you could add a comment meta
+                        add_comment_meta($comment_id, '_awarded_loyalty_points', $points_for_review);
+                    }
                 }
             }
-            update_user_meta( $user->ID, '_loyalty_tier_id', $new_tier_id );
         }
     }
 
-    public function on_comment_status_change( $comment_id, $comment_status ) {
-        if ( 'approve' !== $comment_status ) return;
-        $comment = get_comment( $comment_id );
-        if ( ! $comment || 'product' !== get_post_type( $comment->comment_post_ID ) ) return;
-        $user_id = (int) $comment->user_id;
-        if ( ! $user_id || get_comment_meta( $comment_id, '_points_awarded', true ) ) return;
-        $settings = get_option( 'wp_aff_loyalty_settings' );
-        $points_for_review = isset( $settings['points_for_review'] ) ? (int) $settings['points_for_review'] : 0;
-        if ( $points_for_review > 0 ) {
-            $this->add_points( $user_id, $points_for_review, 'review', sprintf( 'Points for reviewing product #%d', $comment->comment_post_ID ), $comment_id );
-            update_comment_meta( $comment_id, '_points_awarded', true );
+    /**
+     * Daily cron job to update user loyalty tiers.
+     */
+    public function update_user_tiers_daily() {
+        $tiers = get_option('wal_loyalty_tiers', array());
+        if (empty($tiers)) {
+            return;
         }
-    }
 
-    public function award_points_for_purchase( $order_id ) {
-        $order = wc_get_order( $order_id );
-        if ( !$order || !$order->get_customer_id() ) return;
-        $user_id = $order->get_customer_id();
-        global $wpdb;
-        $logs_table = $wpdb->prefix . 'aff_loyalty_transaction_logs';
-        if ( $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$logs_table} WHERE entity_type = 'points_accrual_purchase' AND entity_id = %d", $order_id ) ) ) return;
-        require_once WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'includes/services/class-rule-processor.php';
-        $rules_table = $wpdb->prefix . 'aff_loyalty_rules';
-        $rules = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$rules_table} WHERE module = %s AND active = 1 ORDER BY precedence ASC", 'loyalty' ) );
-        if ( empty( $rules ) ) return;
-        $rule_processor = new Rule_Processor( $order, $rules );
-        $points_to_add = $rule_processor->evaluate();
-        if ( $points_to_add > 0 ) $this->add_points( $user_id, $points_to_add, 'purchase', sprintf( 'Points for order #%d', $order_id ), $order_id );
-    }
+        // Sort tiers by points required, descending
+        usort($tiers, function ($a, $b) {
+            return $b['points_required'] <=> $a['points_required'];
+        });
 
-    public function award_points_for_registration( $user_id ) {
-        $points_to_add = 100;
-        if ( $points_to_add > 0 ) $this->add_points( $user_id, $points_to_add, 'registration', 'Points for signing up' );
-    }
+        $users = get_users(array('fields' => array('ID')));
 
-    private function add_points( $user_id, $points, $source, $log_description, $entity_id = null ) {
-        global $wpdb;
-        $points_table = $wpdb->prefix . 'aff_loyalty_points';
-        $logs_table   = $wpdb->prefix . 'aff_loyalty_transaction_logs';
-        $wpdb->insert( $points_table, array('user_id' => $user_id, 'points' => $points, 'source' => $source, 'status' => 'active'), array('%d', '%d', '%s', '%s') );
-        $wpdb->insert( $logs_table, array('entity_type' => 'points_accrual_' . $source, 'entity_id' => $entity_id, 'change_amount' => $points, 'description' => $log_description, 'meta' => wp_json_encode(array('user_id' => $user_id))), array('%s', '%d', '%d', '%s', '%s') );
-    }
+        foreach ($users as $user) {
+            $user_id = $user->ID;
+            $points = get_user_meta($user_id, 'wal_loyalty_points', true);
+            $current_tier_id = get_user_meta($user_id, 'wal_loyalty_tier_id', true);
+            $new_tier_id = 0; // Default to no tier
 
-    private function spend_points( $user_id, $points_to_spend, $log_description, $entity_id = null ) {
-        global $wpdb; $points_table = $wpdb->prefix . 'aff_loyalty_points';
-        $point_records = $wpdb->get_results( $wpdb->prepare( "SELECT id, points FROM {$points_table} WHERE user_id = %d AND status = 'active' ORDER BY created_at ASC", $user_id ) );
-        $points_left_to_spend = $points_to_spend;
-        foreach ( $point_records as $record ) {
-            if ( $points_left_to_spend <= 0 ) break;
-            $points_in_record = (int) $record->points;
-            if ( $points_in_record <= $points_left_to_spend ) {
-                $wpdb->update( $points_table, array( 'status' => 'redeemed' ), array( 'id' => $record->id ), array('%s'), array('%d') );
-                $points_left_to_spend -= $points_in_record;
-            } else {
-                $remaining_points = $points_in_record - $points_left_to_spend;
-                $wpdb->update( $points_table, array( 'points' => $remaining_points ), array( 'id' => $record->id ), array('%d'), array('%d') );
-                $original_record = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$points_table} WHERE id = %d", $record->id ) );
-                $wpdb->insert( $points_table, array('user_id'=>$user_id, 'points'=>$points_left_to_spend, 'source'=>$original_record->source, 'status'=>'redeemed', 'expiry_date'=>$original_record->expiry_date, 'created_at'=>$original_record->created_at) );
-                $points_left_to_spend = 0;
+            foreach ($tiers as $tier) {
+                if ($points >= $tier['points_required']) {
+                    $new_tier_id = $tier['id'];
+                    break; // Since tiers are sorted, the first match is the correct one
+                }
+            }
+
+            if ($new_tier_id != $current_tier_id) {
+                update_user_meta($user_id, 'wal_loyalty_tier_id', $new_tier_id);
             }
         }
-        $logs_table = $wpdb->prefix . 'aff_loyalty_transaction_logs';
-        $wpdb->insert( $logs_table, array('entity_type' => 'points_redemption', 'entity_id' => $entity_id, 'change_amount' => -$points_to_spend, 'description' => $log_description, 'meta' => wp_json_encode(array('user_id' => $user_id))), array('%s', '%d', '%d', '%s', '%s') );
-    }
-
-    private function get_total_points_balance( $user_id ) {
-        global $wpdb; $points_table = $wpdb->prefix . 'aff_loyalty_points';
-        return (int) $wpdb->get_var( $wpdb->prepare( "SELECT SUM(points) FROM {$points_table} WHERE user_id = %d AND status = 'active'", $user_id ) );
-    }
-
-    public function render_loyalty_dashboard_section( $user_id ) {
-        $total_points = $this->get_total_points_balance( $user_id );
-        $points_history = $this->get_points_history( $user_id );
-        $settings = get_option( 'wp_aff_loyalty_settings' );
-        $points_needed = isset( $settings['points_to_coupon_points'] ) ? (int) $settings['points_to_coupon_points'] : 0;
-        $coupon_value = isset( $settings['points_to_coupon_value'] ) ? (float) $settings['points_to_coupon_value'] : 0;
-        ?>
-        <div class="dashboard-section loyalty-section">
-            <h3><?php esc_html_e( 'Loyalty Points', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h3>
-            <p><strong><?php esc_html_e( 'Your Current Points Balance:', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></strong> <?php echo esc_html( number_format_i18n( $total_points ) ); ?></p>
-
-            <div class="redeem-for-coupon-section">
-                <h4><?php esc_html_e( 'Redeem Points for a Coupon', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h4>
-                <?php if ( $points_needed > 0 && $coupon_value > 0 ) : ?>
-                    <?php if ( $total_points >= $points_needed ) : ?>
-                        <p><?php printf( 'Redeem %s points for a %s coupon!', '<strong>' . number_format_i18n($points_needed) . '</strong>', '<strong>' . wc_price($coupon_value) . '</strong>' ); ?></p>
-                        <button id="redeem-for-coupon-btn" class="button"><?php esc_html_e( 'Get Coupon', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></button>
-                        <div id="coupon-result" style="margin-top: 10px;"></div>
-                    <?php else: ?>
-                        <p><?php printf( 'You need %s more points to get a coupon.', '<strong>' . number_format_i18n($points_needed - $total_points) . '</strong>' ); ?></p>
-                    <?php endif; ?>
-                <?php else: ?>
-                    <p><?php esc_html_e( 'Coupon redemption is not currently available.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></p>
-                <?php endif; ?>
-            </div>
-
-            <h4><?php esc_html_e( 'Points History', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h4>
-            <table class="points-history-table commission-table">
-                <thead><tr><th><?php esc_html_e( 'Points', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Source', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Date', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th></tr></thead>
-                <tbody>
-                <?php if ( ! empty( $points_history ) ) : foreach ( $points_history as $record ) : ?>
-                    <tr>
-                        <td><?php echo esc_html( number_format_i18n( $record->points ) ); ?></td>
-                        <td><?php echo esc_html( ucfirst( $record->source ) ); ?></td>
-                        <td><?php echo esc_html( ucfirst( $record->status ) ); ?></td>
-                        <td><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $record->created_at ) ) ); ?></td>
-                    </tr>
-                <?php endforeach; else : ?>
-                    <tr><td colspan="4" style="text-align: center;"><?php esc_html_e( 'You have no points history yet.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></td></tr>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-        <?php
-    }
-
-    private function get_points_history( $user_id, $limit = 10 ) {
-        global $wpdb;
-        $points_table = $wpdb->prefix . 'aff_loyalty_points';
-        return $wpdb->get_results( $wpdb->prepare("SELECT points, source, status, created_at FROM {$points_table} WHERE user_id = %d ORDER BY created_at DESC LIMIT %d", $user_id, $limit));
     }
 }
