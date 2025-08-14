@@ -43,18 +43,14 @@ class WP_Affiliate_Loyalty_Admin {
         register_setting( $this->settings_option_name, $this->settings_option_name, array( 'sanitize_callback' => array( $this, 'validate_mlm_settings' ) ) );
         require_once WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'includes/class-gateway-manager.php';
         add_settings_section( 'mlm_settings_section', 'Multi-Level Commission Settings', null, $this->plugin_name . '-settings' );
-        for ($i = 1; $i <= 10; $i++) {
-            add_settings_field( 'level_' . $i . '_commission_rate', 'Level ' . $i . ' Commission Rate (%)', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'mlm_settings_section', ['id' => 'level_' . $i . '_commission_rate'] );
-        }
+        for ($i = 1; $i <= 10; $i++) { add_settings_field( 'level_' . $i . '_commission_rate', 'Level ' . $i . ' Commission Rate (%)', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'mlm_settings_section', ['id' => 'level_' . $i . '_commission_rate'] ); }
         add_settings_section( 'payout_gateway_section', 'Payout Gateway Settings', null, $this->plugin_name . '-settings' );
         $payout_gateways = Gateway_Manager::get_payout_gateways();
         add_settings_field( 'active_payout_gateway', 'Active Payout Gateway', array( $this, 'render_gateway_select_field'), $this->plugin_name . '-settings', 'payout_gateway_section', ['gateways' => $payout_gateways, 'type' => 'payout'] );
         foreach ($payout_gateways as $id => $gateway) {
             $section_id = 'payout_gateway_' . $id . '_section';
             add_settings_section( $section_id, $gateway->name . ' Settings', null, $this->plugin_name . '-settings' );
-            foreach ($gateway->get_settings_fields() as $field_id => $field) {
-                add_settings_field( "payout_{$id}_{$field_id}", $field['title'], array($this, 'render_gateway_field'), $this->plugin_name . '-settings', $section_id, ['gateway_id' => $id, 'field_id' => $field_id, 'field' => $field, 'type' => 'payout'] );
-            }
+            foreach ($gateway->get_settings_fields() as $field_id => $field) { add_settings_field( "payout_{$id}_{$field_id}", $field['title'], array($this, 'render_gateway_field'), $this->plugin_name . '-settings', $section_id, ['gateway_id' => $id, 'field_id' => $field_id, 'field' => $field, 'type' => 'payout'] ); }
         }
         add_settings_section( 'sms_gateway_section', 'SMS Gateway Settings', null, $this->plugin_name . '-settings' );
         $sms_gateways = Gateway_Manager::get_sms_gateways();
@@ -62,14 +58,10 @@ class WP_Affiliate_Loyalty_Admin {
         foreach ($sms_gateways as $id => $gateway) {
             $section_id = 'sms_gateway_' . $id . '_section';
             add_settings_section( $section_id, $gateway->name . ' Settings', null, $this->plugin_name . '-settings' );
-            foreach ($gateway->get_settings_fields() as $field_id => $field) {
-                add_settings_field( "sms_{$id}_{$field_id}", $field['title'], array($this, 'render_gateway_field'), $this->plugin_name . '-settings', $section_id, ['gateway_id' => $id, 'field_id' => $field_id, 'field' => $field, 'type' => 'sms'] );
-            }
+            foreach ($gateway->get_settings_fields() as $field_id => $field) { add_settings_field( "sms_{$id}_{$field_id}", $field['title'], array($this, 'render_gateway_field'), $this->plugin_name . '-settings', $section_id, ['gateway_id' => $id, 'field_id' => $field_id, 'field' => $field, 'type' => 'sms'] ); }
         }
         add_settings_section( 'loyalty_tier_settings_section', 'Loyalty Tier Settings', null, $this->plugin_name . '-settings' );
-        for ($i = 1; $i <= 5; $i++) {
-            add_settings_field( 'loyalty_tier_' . $i, 'Tier ' . $i, array( $this, 'render_tier_setting_fields'), $this->plugin_name . '-settings', 'loyalty_tier_settings_section', ['tier_id' => $i] );
-        }
+        for ($i = 1; $i <= 5; $i++) { add_settings_field( 'loyalty_tier_' . $i, 'Tier ' . $i, array( $this, 'render_tier_setting_fields'), $this->plugin_name . '-settings', 'loyalty_tier_settings_section', ['tier_id' => $i] ); }
         add_settings_section( 'loyalty_point_settings_section', 'Loyalty Point Settings', null, $this->plugin_name . '-settings' );
         add_settings_field( 'points_for_review', 'Points for Product Review', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'loyalty_point_settings_section', ['id' => 'points_for_review', 'description' => 'Number of points to award for a review.'] );
         add_settings_field( 'points_to_coupon_points', 'Points to Redeem for Coupon', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'loyalty_point_settings_section', ['id' => 'points_to_coupon_points'] );
@@ -95,9 +87,9 @@ class WP_Affiliate_Loyalty_Admin {
         $points = $options['loyalty_tiers'][$tier_id]['points'] ?? '';
         $bonus = $options['loyalty_tiers'][$tier_id]['bonus'] ?? '';
         ?>
-        <input type="text" name="<?php echo esc_attr($this->settings_option_name); ?>[loyalty_tiers][<?php echo esc_attr($tier_id); ?>][name]" value="<?php echo esc_attr($name); ?>" placeholder="<?php esc_attr_e('Tier Name', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?>" />
-        <input type="number" name="<?php echo esc_attr($this->settings_option_name); ?>[loyalty_tiers][<?php echo esc_attr($tier_id); ?>][points]" value="<?php echo esc_attr($points); ?>" placeholder="<?php esc_attr_e('Points Required', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?>" />
-        <input type="number" name="<?php echo esc_attr($this->settings_option_name); ?>[loyalty_tiers][<?php echo esc_attr($tier_id); ?>][bonus]" value="<?php echo esc_attr($bonus); ?>" placeholder="<?php esc_attr_e('Commission Bonus %', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN); ?>" />
+        <input type="text" name="<?php echo esc_attr($this->settings_option_name . "[loyalty_tiers][{$tier_id}][name]"); ?>" value="<?php echo esc_attr($name); ?>" placeholder="Tier Name" />
+        <input type="number" name="<?php echo esc_attr($this->settings_option_name . "[loyalty_tiers][{$tier_id}][points]"); ?>" value="<?php echo esc_attr($points); ?>" placeholder="Points Required" />
+        <input type="number" name="<?php echo esc_attr($this->settings_option_name . "[loyalty_tiers][{$tier_id}][bonus]"); ?>" value="<?php echo esc_attr($bonus); ?>" placeholder="Commission Bonus %" />
         <?php
     }
 
@@ -120,9 +112,7 @@ class WP_Affiliate_Loyalty_Admin {
         $options = get_option($this->settings_option_name);
         $value = $options[$args['id']] ?? '';
         echo "<input type='text' name='{$this->settings_option_name}[{$args['id']}]' value='" . esc_attr($value) . "' class='regular-text' />";
-        if (!empty($args['description'])) {
-            echo "<p class='description'>{$args['description']}</p>";
-        }
+        if (!empty($args['description'])) echo "<p class='description'>{$args['description']}</p>";
     }
 
     public function display_settings_page() {
