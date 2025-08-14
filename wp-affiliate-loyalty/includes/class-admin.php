@@ -25,6 +25,51 @@ class WP_Affiliate_Loyalty_Admin {
         // Payout Request Meta Box
         add_action( 'add_meta_boxes', array( $this, 'add_payout_request_meta_box' ) );
         add_action( 'save_post_aff_payout_request', array( $this, 'save_payout_request_meta_box_data' ) );
+
+        // Parent affiliate field on user profile
+        add_action( 'edit_user_profile', array( $this, 'add_parent_affiliate_field' ) );
+        add_action( 'edit_user_profile_update', array( $this, 'save_parent_affiliate_field' ) );
+    }
+
+    public function add_parent_affiliate_field( $user ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            return;
+        }
+        $parent_id = get_user_meta( $user->ID, '_aff_loyalty_parent_affiliate_id', true );
+        ?>
+        <h3><?php esc_html_e( 'Affiliate & Loyalty Settings', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h3>
+        <table class="form-table">
+            <tr>
+                <th><label for="parent_affiliate"><?php esc_html_e( 'Parent Affiliate', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></label></th>
+                <td>
+                    <select name="parent_affiliate" id="parent_affiliate">
+                        <option value="0"><?php esc_html_e( '-- None --', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></option>
+                        <?php
+                        $users = get_users( array( 'exclude' => array( $user->ID ) ) ); // Exclude self
+                        foreach ( $users as $u ) {
+                            echo '<option value="' . esc_attr( $u->ID ) . '"' . selected( $parent_id, $u->ID, false ) . '>' . esc_html( $u->display_name ) . ' (#' . esc_html( $u->ID ) . ')</option>';
+                        }
+                        ?>
+                    </select>
+                    <p class="description"><?php esc_html_e( 'Select a parent for this affiliate to enable Level 2 commissions.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></p>
+                </td>
+            </tr>
+        </table>
+        <?php
+    }
+
+    public function save_parent_affiliate_field( $user_id ) {
+        if ( ! current_user_can( 'edit_user', $user_id ) ) {
+            return;
+        }
+        if ( isset( $_POST['parent_affiliate'] ) ) {
+            $parent_id = absint( $_POST['parent_affiliate'] );
+            if ( $parent_id > 0 ) {
+                update_user_meta( $user_id, '_aff_loyalty_parent_affiliate_id', $parent_id );
+            } else {
+                delete_user_meta( $user_id, '_aff_loyalty_parent_affiliate_id' );
+            }
+        }
     }
 
     public function save_payout_request_meta_box_data( $post_id ) {
