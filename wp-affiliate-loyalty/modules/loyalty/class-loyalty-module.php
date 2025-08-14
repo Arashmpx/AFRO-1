@@ -173,19 +173,19 @@ class WP_Affiliate_Loyalty_Loyalty_Module {
 
             <h4><?php esc_html_e( 'Points History', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h4>
             <table class="points-history-table commission-table">
-                 <thead><tr><th><?php esc_html_e( 'Points', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Source', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Date', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th></tr></thead>
-                 <tbody>
-                    <?php if ( ! empty( $points_history ) ) : foreach ( $points_history as $record ) : ?>
-                        <tr>
-                            <td data-label="<?php esc_attr_e( 'Points', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( number_format_i18n( $record->points ) ); ?></td>
-                            <td data-label="<?php esc_attr_e( 'Source', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( ucfirst( $record->source ) ); ?></td>
-                            <td data-label="<?php esc_attr_e( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( ucfirst( $record->status ) ); ?></td>
-                            <td data-label="<?php esc_attr_e( 'Date', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?>"><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $record->created_at ) ) ); ?></td>
-                        </tr>
-                    <?php endforeach; else : ?>
-                        <tr><td colspan="4" style="text-align: center;"><?php esc_html_e( 'You have no points history yet.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></td></tr>
-                    <?php endif; ?>
-                 </tbody>
+                <thead><tr><th><?php esc_html_e( 'Points', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Source', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Status', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th><th><?php esc_html_e( 'Date', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></th></tr></thead>
+                <tbody>
+                <?php if ( ! empty( $points_history ) ) : foreach ( $points_history as $record ) : ?>
+                    <tr>
+                        <td><?php echo esc_html( number_format_i18n( $record->points ) ); ?></td>
+                        <td><?php echo esc_html( ucfirst( $record->source ) ); ?></td>
+                        <td><?php echo esc_html( ucfirst( $record->status ) ); ?></td>
+                        <td><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $record->created_at ) ) ); ?></td>
+                    </tr>
+                <?php endforeach; else : ?>
+                    <tr><td colspan="4" style="text-align: center;"><?php esc_html_e( 'You have no points history yet.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></td></tr>
+                <?php endif; ?>
+                </tbody>
             </table>
         </div>
         <?php
@@ -194,10 +194,6 @@ class WP_Affiliate_Loyalty_Loyalty_Module {
     private function get_points_history( $user_id, $limit = 10 ) {
         global $wpdb;
         $points_table = $wpdb->prefix . 'aff_loyalty_points';
-        return $wpdb->get_results( $wpdb->prepare(
-            "SELECT points, source, status, created_at FROM {$points_table} WHERE user_id = %d ORDER BY created_at DESC LIMIT %d",
-            $user_id,
-            $limit
-        ) );
+        return $wpdb->get_results( $wpdb->prepare("SELECT points, source, status, created_at FROM {$points_table} WHERE user_id = %d ORDER BY created_at DESC LIMIT %d", $user_id, $limit));
     }
 }

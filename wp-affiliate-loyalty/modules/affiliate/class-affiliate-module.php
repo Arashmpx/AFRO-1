@@ -42,9 +42,7 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
         if ( ! is_user_logged_in() ) wp_send_json_error( 'Not logged in' );
         global $wpdb;
         $results = $wpdb->get_results( $wpdb->prepare("SELECT DATE(created_at) as date, SUM(amount) as total_amount FROM {$wpdb->prefix}aff_loyalty_commissions WHERE affiliate_id = %d AND status = 'paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY DATE(created_at) ORDER BY DATE(created_at) ASC", get_current_user_id()));
-        $labels = array_column($results, 'date');
-        $data = array_column($results, 'total_amount');
-        wp_send_json_success( array( 'labels' => $labels, 'data' => $data ) );
+        wp_send_json_success( array( 'labels' => array_column($results, 'date'), 'data' => array_column($results, 'total_amount') ) );
     }
 
     public function get_genealogy_data_ajax_handler() {
@@ -58,8 +56,7 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
         if ( $current_depth >= $max_depth ) return null;
         $user = get_userdata( $user_id );
         $node = array('name' => $user->display_name, 'children' => array());
-        $children_query = new WP_User_Query( array('meta_key' => '_aff_loyalty_parent_affiliate_id', 'meta_value' => $user_id));
-        $children = $children_query->get_results();
+        $children = get_users(array('meta_key' => '_aff_loyalty_parent_affiliate_id', 'meta_value' => $user_id));
         if ( ! empty( $children ) ) {
             foreach ( $children as $child ) {
                 $child_node = $this->build_downline_tree( $child->ID, $max_depth, $current_depth + 1 );
@@ -70,7 +67,7 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
     }
 
     public function register_payout_request_cpt() {
-        register_post_type($this->payout_request_cpt, array('labels' => array('name' => 'Payout Requests'), 'public' => false, 'show_ui' => true, 'show_in_menu' => 'wp-affiliate-loyalty', 'supports' => array('title')));
+        register_post_type($this->payout_request_cpt, array('labels' => array('name' => 'Payout Requests', 'menu_name' => 'Payouts'), 'public' => false, 'show_ui' => true, 'show_in_menu' => 'wp-affiliate-loyalty', 'supports' => array('title')));
     }
 
     public function handle_payout_request_submission() {
@@ -80,7 +77,7 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
         $balance = $this->get_wallet_balance( $user_id );
         $amount = isset($_POST['payout_amount']) ? (float) $_POST['payout_amount'] : 0;
         if ( $amount <= 0 || $amount > $balance ) wp_die('Invalid payout amount.');
-        $post_id = wp_insert_post( array('post_title' => sprintf('Payout Request by %s for %s', wp_get_current_user()->display_name, wc_price($amount)), 'post_status' => 'publish', 'post_type' => $this->payout_request_cpt, 'post_author' => $user_id), true );
+        $post_id = wp_insert_post( array('post_title' => sprintf('Request from %s for %s', wp_get_current_user()->display_name, wc_price($amount)), 'post_status' => 'publish', 'post_type' => $this->payout_request_cpt, 'post_author' => $user_id), true );
         if ( !is_wp_error($post_id) ) {
             add_post_meta( $post_id, '_payout_amount', $amount );
             add_post_meta( $post_id, '_payout_status', 'pending' );
@@ -123,9 +120,15 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
             <p><strong>Your Referral Link:</strong> <input type="text" value="<?php echo esc_url( $affiliate_link ); ?>" readonly style="width:100%;"></p>
             <p><strong>Wallet Balance:</strong> <?php echo esc_html( wc_price( $wallet_balance ) ); ?></p>
             <h4>Earnings Over Last 30 Days</h4>
-            <div class="chart-container" style="position: relative; height:250px; width:100%;"><canvas id="commission-chart"></canvas></div>
+            <div class="chart-container" style="position: relative; height:250px; width:100%; max-width:600px;"><canvas id="commission-chart"></canvas></div>
             <h4>Recent Commissions</h4>
-            <table>...</table>
+            <table class="commission-table"><thead><tr><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>
+            <?php if ( ! empty( $recent_commissions ) ) : foreach ( $recent_commissions as $commission ) : ?>
+                <tr><td><?php echo esc_html( wc_price( $commission->amount ) ); ?></td><td><?php echo esc_html( ucfirst( $commission->status ) ); ?></td><td><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $commission->created_at ) ) ); ?></td></tr>
+            <?php endforeach; else : ?>
+                <tr><td colspan="3" style="text-align: center;">You have no commissions yet.</td></tr>
+            <?php endif; ?>
+            </tbody></table>
         </div>
         <div class="dashboard-section payout-request-section">
             <h3>Request Payout</h3>
@@ -152,13 +155,23 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
     }
 
     public function get_or_create_affiliate_link( $user_id ) {
-        // ... (code unchanged)
+        global $wpdb; $links_table = $wpdb->prefix . 'aff_loyalty_links';
+        $token = $wpdb->get_var( $wpdb->prepare( "SELECT token FROM {$links_table} WHERE affiliate_id = %d AND url = ''", $user_id ) );
+        if ( ! $token ) {
+            $user = get_userdata( $user_id );
+            $token = ! empty( $user->user_nicename ) ? $user->user_nicename : (string) $user_id;
+            if ( $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$links_table} WHERE token = %s", $token ) ) ) $token = $token . '-' . $user_id;
+            $wpdb->insert( $links_table, array( 'affiliate_id' => $user_id, 'token' => $token, 'url' => '' ), array( '%d', '%s', '%s' ) );
+        }
+        return add_query_arg( $this->ref_key, $token, home_url( '/' ) );
     }
     public function get_wallet_balance( $user_id ) {
-        // ... (code unchanged)
+        global $wpdb; $wallets_table = $wpdb->prefix . 'aff_loyalty_wallets';
+        return (float) $wpdb->get_var( $wpdb->prepare( "SELECT balance FROM {$wallets_table} WHERE user_id = %d", $user_id ) );
     }
     public function get_recent_commissions( $user_id, $limit = 10 ) {
-        // ... (code unchanged)
+        global $wpdb; $commissions_table = $wpdb->prefix . 'aff_loyalty_commissions';
+        return $wpdb->get_results( $wpdb->prepare( "SELECT amount, status, created_at FROM {$commissions_table} WHERE affiliate_id = %d ORDER BY created_at DESC LIMIT %d", $user_id, $limit ) );
     }
 
     public function track_visitor() {
