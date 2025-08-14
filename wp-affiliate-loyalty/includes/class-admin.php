@@ -129,20 +129,6 @@ class WP_Affiliate_Loyalty_Admin {
         <?php
     }
 
-    public function save_parent_affiliate_field( $user_id ) {
-        if ( ! current_user_can( 'edit_user', $user_id ) ) {
-            return;
-        }
-        if ( isset( $_POST['parent_affiliate'] ) ) {
-            $parent_id = absint( $_POST['parent_affiliate'] );
-            if ( $parent_id > 0 ) {
-                update_user_meta( $user_id, '_aff_loyalty_parent_affiliate_id', $parent_id );
-            } else {
-                delete_user_meta( $user_id, '_aff_loyalty_parent_affiliate_id' );
-            }
-        }
-    }
-
     public function save_payout_request_meta_box_data( $post_id ) {
         // Check if our nonce is set.
         if ( ! isset( $_POST['payout_details_nonce'] ) ) {
