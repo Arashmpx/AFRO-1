@@ -29,6 +29,77 @@ class WP_Affiliate_Loyalty_Admin {
         // Parent affiliate field on user profile
         add_action( 'edit_user_profile', array( $this, 'add_parent_affiliate_field' ) );
         add_action( 'edit_user_profile_update', array( $this, 'save_parent_affiliate_field' ) );
+
+        // Genealogy CPT
+        add_action( 'init', array( $this, 'register_genealogy_cpt' ) );
+    }
+
+    public function register_genealogy_cpt() {
+        register_post_type( 'aff_genealogy_node',
+            array(
+                'labels' => array('name' => 'Genealogy Nodes'),
+                'public' => false,
+                'show_ui' => false,
+                'supports' => array('title', 'page-attributes'), // Need page-attributes for parent selection
+            )
+        );
+    }
+
+    private function get_or_create_genealogy_node( $user_id ) {
+        $args = array(
+            'post_type' => 'aff_genealogy_node',
+            'meta_query' => array(
+                array(
+                    'key' => '_user_id',
+                    'value' => $user_id,
+                    'compare' => '=',
+                ),
+            ),
+        );
+        $query = new WP_Query( $args );
+        if ( $query->have_posts() ) {
+            $node_id = $query->posts[0]->ID;
+        } else {
+            $user = get_userdata($user_id);
+            $node_id = wp_insert_post(array(
+                'post_title' => 'Node for ' . $user->user_login,
+                'post_type' => 'aff_genealogy_node',
+                'post_status' => 'publish',
+            ));
+            if ($node_id) {
+                update_post_meta( $node_id, '_user_id', $user_id );
+            }
+        }
+        wp_reset_postdata();
+        return $node_id;
+    }
+
+    public function save_parent_affiliate_field( $user_id ) {
+        if ( ! current_user_can( 'edit_user', $user_id ) ) {
+            return;
+        }
+        if ( isset( $_POST['parent_affiliate'] ) ) {
+            $parent_id = absint( $_POST['parent_affiliate'] );
+
+            // Save the simple user meta for direct parent reference
+            if ( $parent_id > 0 ) {
+                update_user_meta( $user_id, '_aff_loyalty_parent_affiliate_id', $parent_id );
+            } else {
+                delete_user_meta( $user_id, '_aff_loyalty_parent_affiliate_id' );
+            }
+
+            // Update the genealogy tree
+            $child_node_id = $this->get_or_create_genealogy_node( $user_id );
+            $parent_node_id = 0;
+            if ( $parent_id > 0 ) {
+                $parent_node_id = $this->get_or_create_genealogy_node( $parent_id );
+            }
+
+            wp_update_post(array(
+                'ID' => $child_node_id,
+                'post_parent' => $parent_node_id,
+            ));
+        }
     }
 
     public function add_parent_affiliate_field( $user ) {
@@ -229,7 +300,18 @@ class WP_Affiliate_Loyalty_Admin {
         require_once WP_AFFILIATE_LOYALTY_PLUGIN_DIR . 'includes/class-gateway-manager.php';
 
         add_settings_section( 'affiliate_settings_section', 'Affiliate Settings', null, $this->plugin_name . '-settings' );
-        add_settings_field( 'level_2_commission_rate', 'Level 2 Commission Rate (%)', array( $this, 'render_basic_text_field'), $this->plugin_name . '-settings', 'affiliate_settings_section', ['id' => 'level_2_commission_rate', 'description' => 'The commission rate for parent affiliates (e.g., 10 for 10%). Leave blank or 0 to disable.'] );
+
+        add_settings_section( 'mlm_settings_section', 'Multi-Level Commission Settings', null, $this->plugin_name . '-settings' );
+        for ($i = 1; $i <= 10; $i++) {
+            add_settings_field(
+                'level_' . $i . '_commission_rate',
+                'Level ' . $i . ' Commission Rate (%)',
+                array( $this, 'render_basic_text_field'),
+                $this->plugin_name . '-settings',
+                'mlm_settings_section',
+                ['id' => 'level_' . $i . '_commission_rate', 'description' => 'Commission rate for level ' . $i . ' ancestors.']
+            );
+        }
 
         add_settings_section( 'payout_gateway_section', 'Payout Gateway Settings', null, $this->plugin_name . '-settings' );
         $payout_gateways = Gateway_Manager::get_payout_gateways();
