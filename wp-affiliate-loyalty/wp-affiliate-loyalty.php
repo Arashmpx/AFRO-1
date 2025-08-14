@@ -60,3 +60,12 @@ function run_wp_affiliate_loyalty() {
     $plugin->run();
 }
 run_wp_affiliate_loyalty();
+
+/**
+ * Declare compatibility with High-Performance Order Storage (HPOS).
+ */
+add_action( 'before_woocommerce_init', function() {
+    if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
+    }
+} );
