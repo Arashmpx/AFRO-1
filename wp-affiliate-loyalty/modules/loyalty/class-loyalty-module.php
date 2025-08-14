@@ -22,6 +22,37 @@ class WP_Affiliate_Loyalty_Loyalty_Module {
         add_action( 'woocommerce_order_status_completed', array( $this, 'deduct_redeemed_points' ), 10, 1 );
         add_action( 'wp_affiliate_loyalty_dashboard_sections', array( $this, 'render_loyalty_dashboard_section' ), 20, 1 );
         add_action( 'wp_affiliate_loyalty_daily_tier_update', array( $this, 'process_tier_updates' ) );
+        add_action( 'wp_set_comment_status', array( $this, 'on_comment_status_change' ), 10, 2 );
+    }
+
+    public function on_comment_status_change( $comment_id, $comment_status ) {
+        if ( 'approve' !== $comment_status ) {
+            return;
+        }
+
+        $comment = get_comment( $comment_id );
+        if ( ! $comment || 'product' !== get_post_type( $comment->comment_post_ID ) ) {
+            return;
+        }
+
+        $user_id = (int) $comment->user_id;
+        if ( ! $user_id ) {
+            return; // Not a logged-in user
+        }
+
+        // Check if points have already been awarded for this review
+        if ( get_comment_meta( $comment_id, '_points_awarded', true ) ) {
+            return;
+        }
+
+        $settings = get_option( 'wp_aff_loyalty_settings' );
+        $points_for_review = isset( $settings['points_for_review'] ) ? (int) $settings['points_for_review'] : 0;
+
+        if ( $points_for_review > 0 ) {
+            $this->add_points( $user_id, $points_for_review, 'review', sprintf( 'Points for reviewing product #%d', $comment->comment_post_ID ), $comment_id );
+            // Mark as awarded
+            update_comment_meta( $comment_id, '_points_awarded', true );
+        }
     }
 
     public function process_tier_updates() {
