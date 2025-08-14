@@ -67,7 +67,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => {
                 if (response.success) {
                     couponResultDiv.innerHTML = `<p style="color: green;">${response.data.message}</p><p>Your coupon code is: <strong>${response.data.coupon_code}</strong></p>`;
-                    redeemBtn.style.display = 'none'; // Hide button after successful redemption
+                    redeemBtn.style.display = 'none';
                 } else {
                     couponResultDiv.innerHTML = `<p style="color: red;">Error: ${response.data.message}</p>`;
                     redeemBtn.disabled = false;

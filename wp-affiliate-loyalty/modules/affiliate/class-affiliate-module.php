@@ -161,7 +161,7 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
             $user = get_userdata( $user_id );
             $token = ! empty( $user->user_nicename ) ? $user->user_nicename : (string) $user_id;
             if ( $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$links_table} WHERE token = %s", $token ) ) ) $token = $token . '-' . $user_id;
-            $wpdb->insert( $links_table, array( 'affiliate_id' => $user_id, 'token' => $token, 'url' => '' ), array( '%d', '%s', '%s' ) );
+            $wpdb->insert( $links_table, array( 'affiliate_id' => $user_id, 'token' => $token, 'url' => '' ) );
         }
         return add_query_arg( $this->ref_key, $token, home_url( '/' ) );
     }
@@ -181,7 +181,7 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
         global $wpdb;
         $link_data = $wpdb->get_row( $wpdb->prepare( "SELECT id, affiliate_id FROM {$wpdb->prefix}aff_loyalty_links WHERE token = %s", $token ) );
         if ( ! $link_data ) return;
-        $wpdb->insert("{$wpdb->prefix}aff_loyalty_clicks", array('link_id' => $link_data->id, 'affiliate_id' => $link_data->affiliate_id, 'ip_address' => $_SERVER['REMOTE_ADDR'] ?? '', 'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''), array('%d', '%d', '%s', '%s'));
+        $wpdb->insert("{$wpdb->prefix}aff_loyalty_clicks", array('link_id' => $link_data->id, 'affiliate_id' => $link_data->affiliate_id, 'ip_address' => $_SERVER['REMOTE_ADDR'] ?? '', 'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''));
         setcookie( $this->cookie_name, absint( $link_data->affiliate_id ), time() + ( 30 * DAY_IN_SECONDS ), COOKIEPATH, COOKIE_DOMAIN );
         wp_safe_redirect( remove_query_arg( $this->ref_key ) );
         exit;
@@ -223,7 +223,7 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
                     $primary_commission_amount += $primary_commission_amount * ( $bonus_rate / 100 );
                 }
             }
-            $wpdb->insert( $commissions_table, array('order_id' => $order_id, 'affiliate_id' => $direct_affiliate_id, 'amount' => $primary_commission_amount, 'status' => 'pending', 'created_at' => current_time('mysql')), array('%d', '%d', '%f', '%s', '%s') );
+            $wpdb->insert( $commissions_table, array('order_id' => $order_id, 'affiliate_id' => $direct_affiliate_id, 'amount' => $primary_commission_amount, 'status' => 'pending', 'created_at' => current_time('mysql')) );
             $ancestors = $this->get_ancestors( $direct_affiliate_id, 10 );
             if ( ! empty( $ancestors ) ) {
                 foreach ( $ancestors as $level => $ancestor_id ) {
@@ -232,7 +232,7 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
                     if ( $rate > 0 ) {
                         $level_commission_amount = $primary_commission_amount * ( $rate / 100 );
                         if ( $level_commission_amount > 0 ) {
-                            $wpdb->insert( $commissions_table, array('order_id' => $order_id, 'affiliate_id' => $ancestor_id, 'amount' => $level_commission_amount, 'status' => 'pending', 'created_at' => current_time('mysql')), array('%d', '%d', '%f', '%s', '%s') );
+                            $wpdb->insert( $commissions_table, array('order_id' => $order_id, 'affiliate_id' => $ancestor_id, 'amount' => $level_commission_amount, 'status' => 'pending', 'created_at' => current_time('mysql')) );
                         }
                     }
                 }

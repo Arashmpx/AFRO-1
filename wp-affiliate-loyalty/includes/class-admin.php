@@ -20,6 +20,75 @@ class WP_Affiliate_Loyalty_Admin {
 
         // Genealogy CPT
         add_action( 'init', array( $this, 'register_genealogy_cpt' ) );
+
+        // Parent affiliate field on user profile
+        add_action( 'edit_user_profile', array( $this, 'add_parent_affiliate_field' ) );
+        add_action( 'edit_user_profile_update', array( $this, 'save_parent_affiliate_field' ) );
+    }
+
+    private function get_or_create_genealogy_node( $user_id ) {
+        $args = array(
+            'post_type' => 'aff_genealogy_node',
+            'meta_query' => array(
+                array('key' => '_user_id', 'value' => $user_id, 'compare' => '='),
+            ),
+        );
+        $query = new WP_Query( $args );
+        if ( $query->have_posts() ) {
+            $node_id = $query->posts[0]->ID;
+        } else {
+            $user = get_userdata($user_id);
+            $node_id = wp_insert_post(array(
+                'post_title' => 'Node for ' . $user->user_login,
+                'post_type' => 'aff_genealogy_node',
+                'post_status' => 'publish',
+            ));
+            if ($node_id) {
+                update_post_meta( $node_id, '_user_id', $user_id );
+            }
+        }
+        wp_reset_postdata();
+        return $node_id;
+    }
+
+    public function save_parent_affiliate_field( $user_id ) {
+        if ( ! current_user_can( 'edit_user', $user_id ) ) return;
+        if ( isset( $_POST['parent_affiliate'] ) ) {
+            $parent_id = absint( $_POST['parent_affiliate'] );
+            if ( $parent_id > 0 ) {
+                update_user_meta( $user_id, '_aff_loyalty_parent_affiliate_id', $parent_id );
+            } else {
+                delete_user_meta( $user_id, '_aff_loyalty_parent_affiliate_id' );
+            }
+            $child_node_id = $this->get_or_create_genealogy_node( $user_id );
+            $parent_node_id = ( $parent_id > 0 ) ? $this->get_or_create_genealogy_node( $parent_id ) : 0;
+            wp_update_post(array('ID' => $child_node_id, 'post_parent' => $parent_node_id));
+        }
+    }
+
+    public function add_parent_affiliate_field( $user ) {
+        if ( ! current_user_can( 'manage_options' ) ) return;
+        $parent_id = get_user_meta( $user->ID, '_aff_loyalty_parent_affiliate_id', true );
+        ?>
+        <h3><?php esc_html_e( 'Affiliate & Loyalty Settings', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></h3>
+        <table class="form-table">
+            <tr>
+                <th><label for="parent_affiliate"><?php esc_html_e( 'Parent Affiliate', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></label></th>
+                <td>
+                    <select name="parent_affiliate" id="parent_affiliate" style="width: 25em;">
+                        <option value="0"><?php esc_html_e( '-- None --', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></option>
+                        <?php
+                        $users = get_users( array( 'exclude' => array( $user->ID ) ) );
+                        foreach ( $users as $u ) {
+                            echo '<option value="' . esc_attr( $u->ID ) . '"' . selected( $parent_id, $u->ID, false ) . '>' . esc_html( $u->display_name ) . ' (#' . esc_html( $u->ID ) . ')</option>';
+                        }
+                        ?>
+                    </select>
+                    <p class="description"><?php esc_html_e( 'Select a parent for this affiliate to enable multi-level commissions.', WP_AFFILIATE_LOYALTY_TEXT_DOMAIN ); ?></p>
+                </td>
+            </tr>
+        </table>
+        <?php
     }
 
     public function register_genealogy_cpt() {
