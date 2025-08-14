@@ -32,6 +32,17 @@ class WP_Affiliate_Loyalty_Admin {
 
         // Genealogy CPT
         add_action( 'init', array( $this, 'register_genealogy_cpt' ) );
+
+        // Temporary debug notice
+        add_action( 'admin_notices', array( $this, 'show_debug_notice' ) );
+    }
+
+    public function show_debug_notice() {
+        ?>
+        <div class="notice notice-info is-dismissible">
+            <p>Jules Debug: Admin Class Loaded successfully.</p>
+        </div>
+        <?php
     }
 
     public function register_genealogy_cpt() {

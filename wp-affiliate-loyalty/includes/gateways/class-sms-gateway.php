@@ -31,6 +31,13 @@ abstract class SMS_Gateway {
     public $name;
 
     /**
+     * The description of the gateway.
+     *
+     * @var string
+     */
+    public $description;
+
+    /**
      * Constructor.
      */
     public function __construct() {
