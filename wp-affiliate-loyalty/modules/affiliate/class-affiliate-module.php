@@ -70,7 +70,7 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
     }
 
     public function register_payout_request_cpt() {
-        register_post_type($this->payout_request_cpt, array('labels' => array('name' => 'Payout Requests'), 'public' => false, 'show_ui' => true, 'show_in_menu' => 'wp-affiliate-loyalty', 'supports' => array('title')));
+        register_post_type($this->payout_request_cpt, array('labels' => array('name' => 'Payout Requests'), 'public' => false, 'show_ui' => true, 'show_in_menu' => true, 'supports' => array('title')));
     }
 
     public function handle_payout_request_submission() {
