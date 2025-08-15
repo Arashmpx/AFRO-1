@@ -17,7 +17,6 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
     private function add_hooks() {
         add_action( 'init', array( $this, 'track_visitor' ) );
         add_action( 'init', array( $this, 'register_shortcodes' ) );
-        add_action( 'init', array( $this, 'register_payout_request_cpt' ) );
         add_action( 'woocommerce_order_status_completed', array( $this, 'register_commission' ), 10, 1 );
         add_action( 'wp_affiliate_loyalty_dashboard_main_tab', array( $this, 'render_affiliate_dashboard_main_tab' ) );
         add_action( 'wp_affiliate_loyalty_dashboard_network_tab', array( $this, 'render_affiliate_dashboard_network_tab' ) );
@@ -64,10 +63,6 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
             }
         }
         return $node;
-    }
-
-    public function register_payout_request_cpt() {
-        register_post_type($this->payout_request_cpt, array('labels' => array('name' => 'Payout Requests', 'menu_name' => 'Payouts'), 'public' => false, 'show_ui' => true, 'show_in_menu' => 'wp-affiliate-loyalty', 'supports' => array('title')));
     }
 
     public function handle_payout_request_submission() {

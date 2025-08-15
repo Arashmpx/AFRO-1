@@ -223,22 +223,6 @@ class WP_Affiliate_Loyalty_Admin {
             'dashicons-groups',
             50
         );
-
-        add_submenu_page(
-            'wp-affiliate-loyalty',
-            __('Genealogy Tree', 'wp-affiliate-loyalty'),
-            __('Genealogy Tree', 'wp-affiliate-loyalty'),
-            'manage_options',
-            'edit.php?post_type=wal_genealogy'
-        );
-
-        add_submenu_page(
-            'wp-affiliate-loyalty',
-            __('Payout Requests', 'wp-affiliate-loyalty'),
-            __('Payout Requests', 'wp-affiliate-loyalty'),
-            'manage_options',
-            'edit.php?post_type=payout_request'
-        );
     }
 
     /**
