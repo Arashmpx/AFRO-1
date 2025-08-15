@@ -16,6 +16,7 @@ class WP_Affiliate_Loyalty_Loyalty_Module {
         add_action('wp_footer', array($this, 'display_points_redemption_form'));
         add_action('wp_ajax_wal_redeem_points', array($this, 'handle_points_redemption'));
         add_action('wp_ajax_nopriv_wal_redeem_points', array($this, 'handle_points_redemption'));
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_loyalty_scripts'));
 
         // Action to award points for product reviews
         add_action('comment_post', array($this, 'award_points_for_review'), 10, 2);
@@ -24,7 +25,8 @@ class WP_Affiliate_Loyalty_Loyalty_Module {
         if (!wp_next_scheduled('wal_daily_tier_update_event')) {
             wp_schedule_event(time(), 'daily', 'wal_daily_tier_update_event');
         }
-        add_action('wal_daily_tier_update_event', array($this, 'update_user_tiers_daily'));
+        add_action('wal_daily_tier_update_event', array($this, 'schedule_tier_update_batches'));
+        add_action('wal_process_tier_update_batch_hook', array($this, 'process_tier_update_batch'), 10, 1);
     }
 
     /**
@@ -58,55 +60,50 @@ class WP_Affiliate_Loyalty_Loyalty_Module {
     }
 
     /**
+     * Enqueue scripts for the loyalty module.
+     */
+    public function enqueue_loyalty_scripts() {
+        if (is_user_logged_in() && is_cart()) {
+            wp_enqueue_script(
+                'wal-loyalty-redemption',
+                WP_AFFILIATE_LOYALTY_PLUGIN_URL . 'assets/js/loyalty-redemption.js',
+                array('jquery'),
+                WP_AFFILIATE_LOYALTY_VERSION,
+                true
+            );
+
+            wp_localize_script(
+                'wal-loyalty-redemption',
+                'loyaltyRedemption',
+                array(
+                    'ajax_url' => admin_url('admin-ajax.php'),
+                    'nonce'    => wp_create_nonce('wal_redeem_points_nonce')
+                )
+            );
+        }
+    }
+
+    /**
      * Display the points redemption form on the cart page.
      */
     public function display_points_redemption_form() {
         if (is_user_logged_in() && is_cart()) {
             $current_user = wp_get_current_user();
             $points = get_user_meta($current_user->ID, 'wal_loyalty_points', true);
-            $points_to_value_rate = get_option('wal_loyalty_points_to_value_rate', 100); // e.g., 100 points = 1 unit of currency
+            $points_to_value_rate = get_option('wal_loyalty_points_to_value_rate', 100);
 
             if ($points > 0) {
                 ?>
                 <div class="wal-redeem-points-container">
                     <h3><?php _e('Redeem Your Loyalty Points', 'wp-affiliate-loyalty'); ?></h3>
-                    <p><?php printf(__('You have %s points.', 'wp-affiliate-loyalty'), '<strong>' . $points . '</strong>'); ?></p>
-                    <p><?php printf(__('Each %d points can be redeemed for a %s coupon.', 'wp-affiliate-loyalty'), $points_to_value_rate, wc_price(1)); ?></p>
+                    <p><?php printf(__('You have %s points.', 'wp-affiliate-loyalty'), '<strong>' . (int)$points . '</strong>'); ?></p>
+                    <p><?php printf(__('Each %d points can be redeemed for a %s coupon.', 'wp-affiliate-loyalty'), (int)$points_to_value_rate, wc_price(1)); ?></p>
                     <form id="wal-redeem-points-form">
                         <input type="number" name="points_to_redeem" id="points_to_redeem" min="1" max="<?php echo esc_attr($points); ?>" required>
                         <button type="submit"><?php _e('Redeem for Coupon', 'wp-affiliate-loyalty'); ?></button>
-                        <?php wp_nonce_field('wal_redeem_points_nonce', 'wal_redeem_nonce'); ?>
                     </form>
-                    <div id="wal-redeem-message"></div>
+                    <div id="wal-redeem-message" style="margin-top: 10px;"></div>
                 </div>
-                <script type="text/javascript">
-                    jQuery(function($) {
-                        $('#wal-redeem-points-form').on('submit', function(e) {
-                            e.preventDefault();
-                            var form = $(this);
-                            var points = $('#points_to_redeem').val();
-                            var nonce = $('#wal_redeem_nonce').val();
-
-                            $.ajax({
-                                type: 'POST',
-                                url: '<?php echo admin_url('admin-ajax.php'); ?>',
-                                data: {
-                                    action: 'wal_redeem_points',
-                                    points: points,
-                                    nonce: nonce
-                                },
-                                success: function(response) {
-                                    $('#wal-redeem-message').html(response.data.message);
-                                    if (response.success) {
-                                        setTimeout(function() {
-                                            window.location.reload();
-                                        }, 2000);
-                                    }
-                                }
-                            });
-                        });
-                    });
-                </script>
                 <?php
             }
         }
@@ -213,9 +210,32 @@ class WP_Affiliate_Loyalty_Loyalty_Module {
     }
 
     /**
-     * Daily cron job to update user loyalty tiers.
+     * Schedules the batch processing of user tier updates.
+     * This is the primary function hooked to the daily cron event.
      */
-    public function update_user_tiers_daily() {
+    public function schedule_tier_update_batches() {
+        $user_count = count_users();
+        $total_users = $user_count['total_users'];
+        $users_per_batch = 100; // A reasonable batch size, can be made a setting later.
+        $num_pages = ceil($total_users / $users_per_batch);
+
+        if ($num_pages <= 0) {
+            return;
+        }
+
+        for ($page = 1; $page <= $num_pages; $page++) {
+            // Stagger events by 2 minutes to avoid server overload.
+            $time = time() + ($page - 1) * 120;
+            wp_schedule_single_event($time, 'wal_process_tier_update_batch_hook', array('page' => $page));
+        }
+    }
+
+    /**
+     * Processes a single batch of users for tier updates.
+     *
+     * @param int $page The page number of users to process.
+     */
+    public function process_tier_update_batch($page) {
         $tiers = get_option('wal_loyalty_tiers', array());
         if (empty($tiers)) {
             return;
@@ -226,7 +246,17 @@ class WP_Affiliate_Loyalty_Loyalty_Module {
             return $b['points_required'] <=> $a['points_required'];
         });
 
-        $users = get_users(array('fields' => array('ID')));
+        $users_per_batch = 100;
+        $args = array(
+            'fields' => array('ID'),
+            'number' => $users_per_batch,
+            'paged'  => $page
+        );
+        $users = get_users($args);
+
+        if (empty($users)) {
+            return;
+        }
 
         foreach ($users as $user) {
             $user_id = $user->ID;

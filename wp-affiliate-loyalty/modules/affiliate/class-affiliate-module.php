@@ -215,24 +215,38 @@ class WP_Affiliate_Loyalty_Affiliate_Module {
         $rule_processor = new Rule_Processor( $order, $rules );
         $primary_commission_amount = $rule_processor->evaluate();
         if ( $primary_commission_amount > 0 ) {
-            $settings = get_option('wp_aff_loyalty_settings');
-            $tier_id = get_user_meta( $direct_affiliate_id, '_loyalty_tier_id', true );
-            if ( $tier_id && isset($settings['loyalty_tiers'][$tier_id]['bonus']) ) {
-                $bonus_rate = (float) $settings['loyalty_tiers'][$tier_id]['bonus'];
-                if ( $bonus_rate > 0 ) {
-                    $primary_commission_amount += $primary_commission_amount * ( $bonus_rate / 100 );
+            // Get loyalty settings to check for a commission bonus from the affiliate's tier.
+            $loyalty_tiers = get_option('wal_loyalty_tiers', array());
+            $tier_id = get_user_meta( $direct_affiliate_id, 'wal_loyalty_tier_id', true ); // Note: Corrected meta key.
+
+            if ( $tier_id && !empty($loyalty_tiers) ) {
+                foreach ($loyalty_tiers as $tier) {
+                    if (isset($tier['id']) && $tier['id'] == $tier_id && isset($tier['commission_bonus'])) {
+                        $bonus_rate = (float) $tier['commission_bonus'];
+                        if ( $bonus_rate > 0 ) {
+                            $primary_commission_amount += $primary_commission_amount * ( $bonus_rate / 100 );
+                        }
+                        break; // Found the tier, no need to loop further.
+                    }
                 }
             }
+
+            // Insert the primary commission for the direct affiliate.
             $wpdb->insert( $commissions_table, array('order_id' => $order_id, 'affiliate_id' => $direct_affiliate_id, 'amount' => $primary_commission_amount, 'status' => 'pending', 'created_at' => current_time('mysql')) );
+
+            // Handle multi-level marketing (MLM) commissions for ancestors.
+            $mlm_level_rates = get_option('wal_mlm_levels', array());
             $ancestors = $this->get_ancestors( $direct_affiliate_id, 10 );
-            if ( ! empty( $ancestors ) ) {
-                foreach ( $ancestors as $level => $ancestor_id ) {
-                    $level_number = $level + 1;
-                    $rate = isset($settings['level_' . $level_number . '_commission_rate']) ? (float) $settings['level_' . $level_number . '_commission_rate'] : 0;
-                    if ( $rate > 0 ) {
-                        $level_commission_amount = $primary_commission_amount * ( $rate / 100 );
-                        if ( $level_commission_amount > 0 ) {
-                            $wpdb->insert( $commissions_table, array('order_id' => $order_id, 'affiliate_id' => $ancestor_id, 'amount' => $level_commission_amount, 'status' => 'pending', 'created_at' => current_time('mysql')) );
+
+            if ( ! empty( $ancestors ) && ! empty( $mlm_level_rates ) ) {
+                foreach ( $ancestors as $level => $ancestor_id ) { // $level is 0-indexed.
+                    if ( isset( $mlm_level_rates[$level] ) ) {
+                        $rate = (float) $mlm_level_rates[$level];
+                        if ( $rate > 0 ) {
+                            $level_commission_amount = $primary_commission_amount * ( $rate / 100 );
+                            if ( $level_commission_amount > 0 ) {
+                                $wpdb->insert( $commissions_table, array('order_id' => $order_id, 'affiliate_id' => $ancestor_id, 'amount' => $level_commission_amount, 'status' => 'pending', 'created_at' => current_time('mysql')) );
+                            }
                         }
                     }
                 }

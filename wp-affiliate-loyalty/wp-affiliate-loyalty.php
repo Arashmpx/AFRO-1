@@ -30,6 +30,8 @@ add_action( 'before_woocommerce_init', function() {
 
 
 define( 'WP_AFFILIATE_LOYALTY_VERSION', '1.1.0' );
+define( 'WP_AFFILIATE_LOYALTY_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+define( 'WP_AFFILIATE_LOYALTY_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 
 /**
  * The core plugin class that is used to define internationalization,
